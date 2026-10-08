@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #c9922a;
+  --gold-light: #e2bc6d;
+  --gold-tint: #fdf8ee;
+  --charcoal: #1a1d23;
+  --canvas: #f7f5f0;
+  --card: #ffffff;
+  --emerald: #1e7b5e;
+  --ruby: #c0392b;
+  --sapphire: #2563eb;
+  --muted: #8b8070;
+  --border: #ede8df;
+  --sidebar-w: 260px;
+  --header-h: 64px;
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --radius-badge: 20px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply m-0 bg-canvas font-body text-charcoal;
+}
+
+.watermark-diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(255, 255, 255, 0.04) 10px,
+    rgba(255, 255, 255, 0.04) 20px
+  );
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}

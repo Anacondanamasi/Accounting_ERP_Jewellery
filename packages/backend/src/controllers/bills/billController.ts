@@ -1,0 +1,369 @@
+import type { Request, Response } from "express";
+import { z } from "zod";
+import { created, fail, ok } from "../../lib/apiResponse";
+import {
+  resolveAccountingAccounts,
+  reversePostedJournalsForSource,
+  upsertPostedJournalForSource,
+} from "../../lib/accounting";
+import { computeJewelleryTotals, makeDocumentNumber, splitGst } from "../../lib/documents";
+import { prisma } from "../../lib/prisma";
+import { getCompanyId, getActor } from "../../lib/requestUtils";
+
+const lineSchema = z.object({
+  sku: z.string().min(1),
+  description: z.string().min(1),
+  karat: z.string().min(1),
+  grossWt: z.coerce.number().nonnegative(),
+  netWt: z.coerce.number().nonnegative(),
+  stoneWt: z.coerce.number().nonnegative(),
+  makingType: z.string().min(1),
+  makingRate: z.coerce.number().nonnegative(),
+  ratePerGram: z.coerce.number().nonnegative(),
+  discountPct: z.coerce.number().min(0).max(100),
+  gstPct: z.coerce.number().min(0).max(28),
+  hsnCode: z.string().min(1),
+});
+
+const billSchema = z.object({
+  billDate: z.string().min(1),
+  dueDate: z.string().min(1),
+  supplierId: z.coerce.number(),
+  qualityCertUrl: z.string().optional(),
+  lines: z.array(lineSchema).min(1),
+});
+
+const billInclude = {
+  supplier: true,
+  lines: { orderBy: { createdAt: "asc" as const } },
+  payments: { orderBy: { date: "desc" as const } },
+};
+
+const lineCreates = async (companyId: number, userId: string, lines: z.infer<typeof lineSchema>[]) => {
+  const totals = computeJewelleryTotals(lines);
+  const items = await prisma.item.findMany({
+    where: { companyId, sku: { in: lines.map((line) => line.sku) } },
+  });
+  const itemBySku = new Map(items.map((item) => [item.sku, item.id]));
+
+  return {
+    totals,
+    creates: totals.computedLines.map((line) => ({
+      companyId,
+      itemId: itemBySku.get(line.sku),
+      sku: line.sku,
+      description: line.description,
+      karat: line.karat,
+      grossWt: line.grossWt,
+      netWt: line.netWt,
+      stoneWt: line.stoneWt,
+      makingType: line.makingType,
+      makingRate: line.makingRate,
+      makingAmount: line.makingAmount,
+      ratePerGram: line.ratePerGram,
+      amount: line.amount,
+      discountPct: line.discountPct,
+      gstPct: line.gstPct,
+      hsnCode: line.hsnCode,
+      total: line.total,
+      createdBy: userId,
+    })),
+  };
+};
+
+export const listBills = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const search = req.query.search ? String(req.query.search) : "";
+  const status = req.query.status ? String(req.query.status).toUpperCase() : undefined;
+
+  const rows = await prisma.bill.findMany({
+    where: {
+      companyId,
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { billNo: { contains: search } },
+              { supplier: { name: { contains: search } } },
+            ],
+          }
+        : {}),
+    },
+    include: { supplier: true, lines: true },
+    orderBy: { date: "desc" },
+  });
+
+  const totalAmount = rows.reduce((sum, row) => sum + Number(row.grandTotal), 0);
+  const paidAmount = rows.reduce((sum, row) => sum + Number(row.paidAmount), 0);
+  const balanceDue = rows.reduce((sum, row) => sum + Number(row.balanceDue), 0);
+
+  return ok(res, {
+    rows,
+    summary: {
+      total: totalAmount,
+      paid: paidAmount,
+      outstanding: balanceDue,
+      draft: rows.filter((row) => row.status === "DRAFT").length,
+      overdue: rows.filter((row) => Number(row.balanceDue) > 0 && row.dueDate < new Date()).length,
+    },
+  });
+};
+
+export const getBillById = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const row = await prisma.bill.findFirst({
+    where: { id: Number(req.params.id), companyId },
+    include: billInclude,
+  });
+  if (!row) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+
+  return ok(res, row);
+};
+
+export const createBill = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const parsed = billSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid bill payload", parsed.error.issues);
+
+  const supplier = await prisma.supplier.findFirst({
+    where: { id: parsed.data.supplierId, companyId, status: "ACTIVE" },
+  });
+  if (!supplier) return fail(res, 404, "SUPPLIER_NOT_FOUND", "Supplier not found");
+
+  const { lines, ...header } = parsed.data;
+  const { totals, creates } = await lineCreates(companyId, getActor(req), lines);
+  const tax = splitGst(totals.taxTotal, false);
+
+  const row = await prisma.bill.create({
+    data: {
+      companyId,
+      billNo: makeDocumentNumber("BILL"),
+      date: new Date(header.billDate),
+      dueDate: new Date(header.dueDate),
+      supplierId: header.supplierId,
+      status: "DRAFT",
+      subTotal: totals.subTotal,
+      discount: totals.discount,
+      taxableAmount: totals.taxableAmount,
+      taxTotal: totals.taxTotal,
+      cgst: tax.cgst,
+      sgst: tax.sgst,
+      igst: tax.igst,
+      grandTotal: totals.grandTotal,
+      paidAmount: 0,
+      balanceDue: totals.grandTotal,
+      qualityCertUrl: header.qualityCertUrl,
+      createdBy: getActor(req),
+      lines: { create: creates },
+    },
+    include: billInclude,
+  });
+
+  return created(res, row, "Bill created");
+};
+
+export const updateBill = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const parsed = billSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid bill payload", parsed.error.issues);
+
+  const existing = await prisma.bill.findFirst({ where: { id: Number(req.params.id), companyId } });
+  if (!existing) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+  if (existing.status !== "DRAFT") {
+    return fail(res, 400, "INVALID_STATUS", "Only draft bills can be updated");
+  }
+
+  const { lines, ...header } = parsed.data;
+  const { totals, creates } = await lineCreates(companyId, getActor(req), lines);
+  const tax = splitGst(totals.taxTotal, false);
+
+  const row = await prisma.$transaction(async (tx) => {
+    await tx.billItem.deleteMany({ where: { billId: existing.id, companyId } });
+    return tx.bill.update({
+      where: { id: existing.id },
+      data: {
+        date: new Date(header.billDate),
+        dueDate: new Date(header.dueDate),
+        supplierId: header.supplierId,
+        subTotal: totals.subTotal,
+        discount: totals.discount,
+        taxableAmount: totals.taxableAmount,
+        taxTotal: totals.taxTotal,
+        cgst: tax.cgst,
+        sgst: tax.sgst,
+        igst: tax.igst,
+        grandTotal: totals.grandTotal,
+        balanceDue: totals.grandTotal,
+        qualityCertUrl: header.qualityCertUrl,
+        lines: { create: creates },
+      },
+      include: billInclude,
+    });
+  });
+
+  return ok(res, row, "Bill updated");
+};
+
+export const postBill = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const bill = await prisma.bill.findFirst({ where: { id: Number(req.params.id), companyId } });
+  if (!bill) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+  if (bill.status === "VOID") return fail(res, 400, "INVALID_STATUS", "Void bill cannot be posted");
+
+  const actor = getActor(req);
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.bill.update({ where: { id: bill.id }, data: { status: "POSTED" } });
+    const accounts = await resolveAccountingAccounts(tx, companyId, actor);
+    await upsertPostedJournalForSource(tx, {
+      companyId,
+      sourceKey: `BILL:${bill.id}`,
+      entryPrefix: "PBILL",
+      date: new Date(bill.date),
+      narration: `Bill ${bill.billNo}`,
+      actor,
+      lines: [
+        { accountId: accounts.purchaseId, debit: Number(bill.taxableAmount), narration: `Bill ${bill.billNo}` },
+        { accountId: accounts.inputGstId, debit: Number(bill.cgst) + Number(bill.sgst) + Number(bill.igst), narration: `Input GST on ${bill.billNo}` },
+        { accountId: accounts.payableId, credit: Number(bill.grandTotal), narration: `Bill ${bill.billNo}` },
+      ],
+    });
+    return updated;
+  });
+
+  return ok(res, row, "Bill posted");
+};
+
+export const voidBill = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const bill = await prisma.bill.findFirst({ where: { id: Number(req.params.id), companyId } });
+  if (!bill) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+  if (Number(bill.paidAmount) > 0) {
+    return fail(res, 400, "PAYMENT_EXISTS", "Cannot void a bill with recorded payments");
+  }
+
+  const actor = getActor(req);
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.bill.update({ where: { id: bill.id }, data: { status: "VOID" } });
+    await reversePostedJournalsForSource(tx, {
+      companyId,
+      sourceKey: `BILL:${bill.id}`,
+      actor,
+      date: new Date(),
+      narrationPrefix: "Bill void",
+    });
+    return updated;
+  });
+
+  return ok(res, row, "Bill voided");
+};
+
+export const duplicateBill = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const row = await prisma.bill.findFirst({
+    where: { id: Number(req.params.id), companyId },
+    include: { lines: true },
+  });
+  if (!row) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+
+  const duplicate = await prisma.bill.create({
+    data: {
+      companyId,
+      billNo: makeDocumentNumber("BILL"),
+      date: new Date(),
+      dueDate: row.dueDate,
+      supplierId: row.supplierId,
+      status: "DRAFT",
+      qualityCertUrl: row.qualityCertUrl,
+      subTotal: row.subTotal,
+      discount: row.discount,
+      taxableAmount: row.taxableAmount,
+      taxTotal: row.taxTotal,
+      cgst: row.cgst,
+      sgst: row.sgst,
+      igst: row.igst,
+      grandTotal: row.grandTotal,
+      paidAmount: 0,
+      balanceDue: row.grandTotal,
+      createdBy: getActor(req),
+      lines: {
+        create: row.lines.map(({ id, billId, createdAt, updatedAt, createdBy, ...line }) => ({
+          ...line,
+          createdBy: getActor(req),
+        })),
+      },
+    },
+    include: billInclude,
+  });
+
+  return created(res, duplicate, "Bill duplicated");
+};
+
+export const recordBillPayment = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  const row = await prisma.bill.findFirst({ where: { id: Number(req.params.id), companyId } });
+  if (!row) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+
+  const amount = Number(req.body.amount ?? 0);
+  if (amount <= 0) return fail(res, 400, "INVALID_AMOUNT", "Payment amount must be greater than zero");
+
+  const newPaidAmount = Number(row.paidAmount) + amount;
+  const newBalanceDue = Math.max(Number(row.grandTotal) - newPaidAmount, 0);
+
+  const actor = getActor(req);
+  const updated = await prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.create({
+      data: {
+        companyId,
+        supplierId: row.supplierId,
+        billId: row.id,
+        amount,
+        mode: String(req.body.mode ?? "BANK_TRANSFER"),
+        reference: req.body.reference ? String(req.body.reference) : undefined,
+        date: req.body.date ? new Date(String(req.body.date)) : new Date(),
+        type: "PAYMENT",
+        createdBy: actor,
+      },
+    });
+
+    const updatedBill = await tx.bill.update({
+      where: { id: row.id },
+      data: {
+        paidAmount: newPaidAmount,
+        balanceDue: newBalanceDue,
+        status: newBalanceDue <= 0 ? "APPROVED" : "POSTED",
+      },
+      include: billInclude,
+    });
+
+    const accounts = await resolveAccountingAccounts(tx, companyId, actor);
+    const mode = String(req.body.mode ?? "BANK_TRANSFER").toUpperCase();
+    const cashBankAccountId = mode === "CASH" ? accounts.cashId : accounts.bankId;
+    await upsertPostedJournalForSource(tx, {
+      companyId,
+      sourceKey: `BILL_PAYMENT:${payment.id}`,
+      entryPrefix: "PAY",
+      date: payment.date,
+      narration: `Payment against ${row.billNo}`,
+      actor,
+      lines: [
+        { accountId: accounts.payableId, debit: amount, narration: `Payment against ${row.billNo}` },
+        { accountId: cashBankAccountId, credit: amount, narration: `Paid via ${mode}` },
+      ],
+    });
+
+    return updatedBill;
+  });
+
+  return ok(res, updated, "Bill payment recorded");
+};
+
+export const getNextBillNo = async (_req: Request, res: Response) =>
+  ok(res, { billNo: makeDocumentNumber("BILL") });

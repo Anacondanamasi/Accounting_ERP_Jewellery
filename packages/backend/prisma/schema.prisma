@@ -1,0 +1,1092 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums removed for SQLite compatibility
+
+
+model Company {
+  id Int @id @default(autoincrement())
+  name                 String
+  legalName            String?
+  gstin                String?
+  pan                  String?
+  email                String?
+  phone                String?
+  website              String?
+  addressLine1         String?
+  addressLine2         String?
+  city                 String?
+  state                String?
+  pinCode              String?
+  country              String?
+  fiscalYearStartMonth Int?     @default(4)
+  weightUnit           String?  @default("g")
+  currency             String?  @default("INR")
+  timezone             String?  @default("Asia/Kolkata")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  branches   Branch[]
+  users      User[]
+  accountGroups AccountGroup[]
+}
+
+model Branch {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  name       String
+  code       String?
+  address    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  company    Company  @relation(fields: [companyId], references: [id])
+}
+
+model FinancialYear {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  label      String
+  startDate  DateTime
+  endDate    DateTime
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  email      String       @unique
+  fullName   String
+  password   String
+  role       String
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  createdBy  String
+  company    Company      @relation(fields: [companyId], references: [id])
+}
+
+model Role {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model Permission {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  module     String
+  action     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model UserRole {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  userId     Int
+  roleId     Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model AuditLog {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  userId     Int
+  tableName  String
+  recordId   Int
+  action     String
+  oldValues  String?
+  newValues  String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model Notification {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  title      String
+  body       String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model NumberSeries {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  docType    String
+  prefix     String
+  suffix     String?
+  padding    Int      @default(4)
+  current    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model Setting {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  key        String
+  value      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model AccountGroup {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  heading    String   @default("EXPENSES")
+  name       String
+  code       String?
+  type       String
+  sortOrder  Int      @default(0)
+  parentId   Int?
+  parent     AccountGroup?  @relation("GroupToGroup", fields: [parentId], references: [id], onDelete: SetNull)
+  children   AccountGroup[] @relation("GroupToGroup")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  accounts   Account[]
+
+  @@unique([companyId, name])
+  @@index([companyId, type])
+}
+
+model Account {
+  id Int @id @default(autoincrement())
+  companyId       Int
+  code            String
+  name            String
+  description     String?
+  heading         String   @default("EXPENSES")
+  group           String
+  groupId         Int?
+  type            String
+  parentId        Int?
+  openingBalance  Float
+  taxCode         String?
+  taxTreatment    String?
+  showOnDashboard Boolean  @default(false)
+  showInExpenseClaims Boolean @default(false)
+  enablePayments  Boolean  @default(false)
+  allowManualJournals Boolean @default(true)
+  allowReconciliation Boolean @default(false)
+  isBankAccount   Boolean  @default(false)
+  isCashAccount   Boolean  @default(false)
+  isControlAccount Boolean @default(false)
+  cashFlowCategory String?
+  financialCategory String?
+  displayOrder    Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String
+  accountGroup    AccountGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  bankAccounts    BankAccount[]
+
+  @@unique([companyId, code])
+  @@index([companyId, groupId])
+}
+
+model JournalEntry {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  entryNo     String
+  date        DateTime
+  narration   String
+  type        String?
+  status      String @default("DRAFT")
+  postedAt    DateTime?
+  postedBy    String?
+  reversalOf  Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  createdBy   String
+  lines       JournalLine[]
+}
+
+model JournalLine {
+  id Int @id @default(autoincrement())
+  companyId    Int
+  entryId      Int
+  accountId    Int
+  debit        Float
+  credit       Float
+  costCentreId Int?
+  narration    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  entry        JournalEntry @relation(fields: [entryId], references: [id])
+}
+
+model JournalTemplate {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  name        String
+  narration   String?
+  lines       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+}
+
+model Customer {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  code        String
+  name        String
+  type        String?
+  category    String?
+  mobile      String?
+  email       String?
+  gstin       String?
+  pan         String?
+  openingBalance Float @default(0)
+  creditLimit Float
+  creditDays  Int      @default(0)
+  city        String?
+  notes       String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  invoices    Invoice[]
+  payments    Payment[]
+  schemeMembers SchemeMember[]
+  noteDocuments NoteDocument[]
+
+  @@unique([companyId, code])
+}
+
+model Invoice {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  invoiceNo     String
+  date          DateTime
+  dueDate       DateTime
+  customerId    Int
+  salespersonId Int?
+  status        String @default("DRAFT")
+  currency      String         @default("INR")
+  goldRate22k   Float
+  goldRate18k   Float
+  goldRate24k   Float
+  subTotal      Float
+  discount      Float
+  taxableAmount Float
+  cgst          Float
+  sgst          Float
+  igst          Float
+  grandTotal    Float
+  paidAmount    Float
+  balanceDue    Float
+  notes         String?
+  terms         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  lines         InvoiceItem[]
+  payments      Payment[]
+  settlementsAsTarget DocumentSettlement[] @relation("SettlementTargetInvoice")
+}
+
+model InvoiceItem {
+  id Int @id @default(autoincrement())
+  companyId    Int
+  invoiceId    Int
+  itemId       Int?
+  sku          String?
+  description  String
+  karat        String
+  grossWt      Float
+  netWt        Float
+  stoneWt      Float
+  makingType   String
+  makingRate   Float
+  makingAmount Float
+  ratePerGram  Float
+  amount       Float
+  discountPct  Float
+  gstPct       Float
+  hsnCode      String
+  huid         String?
+  total        Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item         Item?    @relation(fields: [itemId], references: [id])
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  customerId Int?
+  supplierId Int?
+  invoiceId  Int?
+  billId     Int?
+  type       String
+  date       DateTime
+  mode       String
+  amount     Float
+  reference  String?
+  receivedBy String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id])
+  bill       Bill?     @relation(fields: [billId], references: [id])
+  settlementsAsSource DocumentSettlement[] @relation("SettlementSourcePayment")
+}
+
+model Supplier {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  code        String
+  name        String
+  category    String?
+  mobile      String?
+  email       String?
+  gstin       String?
+  city        String?
+  openingBalance Float @default(0)
+  creditLimit Float
+  creditDays  Int      @default(0)
+  notes       String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  bills       Bill[]
+  payments    Payment[]
+  noteDocuments NoteDocument[]
+
+  @@unique([companyId, code])
+}
+
+model Bill {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  billNo        String
+  date          DateTime
+  dueDate       DateTime
+  supplierId    Int
+  status        String @default("DRAFT")
+  qualityCertUrl String?
+  subTotal      Float
+  cgst          Float
+  sgst          Float
+  igst          Float
+  paidAmount    Float @default(0)
+  balanceDue    Float @default(0)
+  discount      Float @default(0)
+  taxableAmount Float @default(0)
+  taxTotal      Float @default(0)
+  grandTotal    Float
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  lines         BillItem[]
+  payments      Payment[]
+  settlementsAsTarget DocumentSettlement[] @relation("SettlementTargetBill")
+}
+
+model BillItem {
+  id Int @id @default(autoincrement())
+  companyId    Int
+  billId       Int
+  itemId       Int?
+  sku          String
+  description  String
+  karat        String
+  grossWt      Float
+  netWt        Float
+  stoneWt      Float
+  makingType   String
+  makingRate   Float
+  makingAmount Float
+  ratePerGram  Float
+  amount       Float
+  discountPct  Float
+  gstPct       Float
+  hsnCode      String
+  total        Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  bill         Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  item         Item?    @relation(fields: [itemId], references: [id])
+}
+
+model Item {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  sku           String
+  name          String
+  category      String
+  subCategory   String?
+  collection    String?
+  metalType     String
+  karat         String
+  grossWt       Float
+  netWt         Float
+  stoneWt       Float
+  wastagePct    Float
+  costingMethod String
+  makingType    String
+  makingRate    Float
+  costPrice     Float
+  mrp           Float
+  reorderLevel  Float
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+  invoiceItems  InvoiceItem[]
+  billItems     BillItem[]
+  adjustmentLines InventoryAdjustmentLine[]
+
+  @@unique([companyId, sku])
+}
+
+model StockLedger {
+  id Int @id @default(autoincrement())
+  companyId       Int
+  itemId          Int
+  transactionType String
+  referenceType   String
+  referenceId     Int
+  issuedQty       Float
+  issuedWt        Float
+  receivedQty     Float
+  receivedWt      Float
+  balanceQty      Float
+  balanceWt       Float
+  rate            Float
+  value           Float
+  narration       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String
+}
+
+model InventoryAdjustment {
+  id Int @id @default(autoincrement())
+  companyId        Int
+  adjNo            String
+  date             DateTime
+  type             String
+  reason           String
+  status           String @default("DRAFT")
+  approvedBy       String?
+  supportingDocUrl String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  createdBy        String
+  lines            InventoryAdjustmentLine[]
+}
+
+model InventoryAdjustmentLine {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  adjustmentId  Int
+  itemId        Int
+  currentQty    Float
+  currentWt     Float
+  adjustedQty   Float
+  adjustedWt    Float
+  diffQty       Float
+  diffWt        Float
+  oldRate       Float
+  newRate       Float
+  valueImpact   Float
+  accountId     Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+  adjustment    InventoryAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  item          Item @relation(fields: [itemId], references: [id])
+}
+
+model MetalRate {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  date           DateTime
+  karat24        Float
+  karat22        Float
+  karat18        Float
+  karat14        Float
+  silver         Float
+  source         String?
+  overrideReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+}
+
+model Karigar {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  code           String
+  name           String
+  specialization String?
+  mobile         String?
+  gstin          String?
+  pan            String?
+  goldInHand     Float @default(0)
+  makingDue      Float @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+  jobWorkOrders  JobWorkOrder[]
+}
+
+model JobWorkOrder {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  jwoNo         String
+  karigarId     Int
+  karigar       Karigar  @relation(fields: [karigarId], references: [id])
+  issueDate     DateTime
+  expectedDate  DateTime?
+  description   String?
+  goldIssuedG   Float
+  goldReturnedG Float
+  allowedLossPct Float
+  makingCharges Float
+  status        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+}
+
+model BankAccount {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  bankName       String
+  accountName    String?
+  accountNo      String?
+  accountNoMasked String?
+  ifsc           String
+  accountType    String
+  openingBalance Float @default(0)
+  currentBalance Float @default(0)
+  bookBalance    Float @default(0)
+  bankBalance    Float @default(0)
+  unreconciledCount Int    @default(0)
+  isActive       Boolean  @default(true)
+  accountId      Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+  account        Account? @relation(fields: [accountId], references: [id])
+  transactions   BankTransaction[]
+}
+
+model BankTransaction {
+  id Int @id @default(autoincrement())
+  companyId          Int
+  bankAccountId      Int
+  date               DateTime
+  narration          String
+  reference          String?
+  debit              Float
+  credit             Float
+  balance            Float
+  isReconciled       Boolean  @default(false)
+  reconciledAt       DateTime?
+  matchedJournalLineId Int?
+  importBatchId      Int?
+  source             String   @default("BANK_STATEMENT")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdBy          String
+  bankAccount        BankAccount @relation(fields: [bankAccountId], references: [id])
+}
+
+model BankReconciliation {
+  id Int @id @default(autoincrement())
+  companyId            Int
+  bankAccountId        Int
+  month                Int
+  year                 Int
+  balancePerBank       Float
+  depositsInTransit    Float
+  outstandingCheques   Float
+  adjustedBankBalance  Float
+  balancePerBooks      Float
+  difference           Float
+  status               String
+  finalizedAt          DateTime?
+  finalizedBy          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  createdBy            String
+}
+
+model HSNMaster {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  code        String
+  description String
+  gstRate     Float
+  cessRate    Float
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+}
+
+model GoldScheme {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  name           String
+  monthlyMin     Float
+  monthlyMax     Float
+  durationMonths Int
+  bonusType      String
+  bonusValue     Float
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+  members        SchemeMember[]
+}
+
+model SchemeMember {
+  id Int @id @default(autoincrement())
+  companyId         Int
+  schemeId          Int
+  customerId        Int
+  enrollDate        DateTime
+  monthlyAmt        Float
+  totalInstallments Int
+  paidInstallments  Int
+  totalDeposited    Float
+  bonusAmount       Float
+  maturityDate      DateTime
+  status            String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String
+  scheme            GoldScheme @relation(fields: [schemeId], references: [id])
+  customer          Customer @relation(fields: [customerId], references: [id])
+}
+
+model Employee {
+  id Int @id @default(autoincrement())
+  companyId       Int
+  code            String
+  name            String
+  designation     String
+  department      String
+  dateOfJoin      DateTime
+  pan             String?
+  aadhaar         String?
+  basicSalary     Float
+  hra             Float
+  otherAllowances Float
+  pfApplicable    Boolean  @default(false)
+  esiApplicable   Boolean  @default(false)
+  bankName        String?
+  accountNo       String?
+  ifsc            String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String
+  salaryRecords   SalaryRecord[]
+}
+
+model SalaryRecord {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  employeeId  Int
+  month       Int
+  year        Int
+  daysWorked  Float
+  basicEarned Float
+  hra         Float
+  allowances  Float
+  pfDeduction Float
+  esiDeduction Float
+  tdsDeduction Float
+  netPay      Float
+  status      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+}
+
+model NoteDocument {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  noteNo        String
+  type          String
+  date          DateTime
+  partyType     String
+  customerId    Int?
+  supplierId    Int?
+  referenceNo   String?
+  reason        String?
+  status        String @default("DRAFT")
+  subTotal      Float @default(0)
+  taxTotal      Float @default(0)
+  grandTotal    Float @default(0)
+  usedAmount    Float @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String
+  lines         NoteLine[]
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  supplier      Supplier?  @relation(fields: [supplierId], references: [id])
+  settlementsAsSource DocumentSettlement[] @relation("SettlementSourceNote")
+}
+
+model NoteLine {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  noteId      Int
+  description String
+  quantity    Float @default(1)
+  rate        Float @default(0)
+  gstPct      Float @default(0)
+  amount      Float @default(0)
+  taxAmount   Float @default(0)
+  total       Float @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  note        NoteDocument @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+// Enums removed for SQLite compatibility: TenantCompanyStatus, MembershipStatus
+
+
+model TenantUser {
+  id                  String                      @id @default(uuid())
+  email               String                      @unique
+  passwordHash        String                      @map("password_hash")
+  fullName            String                      @map("full_name")
+  phone               String?
+  avatarUrl           String?                     @map("avatar_url")
+  isEmailVerified     Boolean                     @default(false) @map("is_email_verified")
+  isActive            Boolean                     @default(true) @map("is_active")
+  lastLoginAt         DateTime?                   @map("last_login_at")
+  mfaSecret           String?                     @map("mfa_secret")
+  failedLoginAttempts Int                         @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?                   @map("locked_until")
+  legacyUserId        Int?                        @unique @map("legacy_user_id")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  deletedAt           DateTime?                   @map("deleted_at")
+  ownedCompanies      TenantCompany[]             @relation("tenant_company_owner")
+  memberships         UserCompanyMembership[]
+  invitedMemberships  UserCompanyMembership[]     @relation("membership_invited_by")
+  sessions            ActiveSession[]
+  logs                IdentityAuditLog[]
+
+  @@index([email])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model SubscriptionPlan {
+  id                 String          @id @default(uuid())
+  name               String
+  maxUsers           Int             @default(5) @map("max_users")
+  maxCompaniesPerUser Int            @default(3) @map("max_companies_per_user")
+  features           String
+
+  priceMonthly       Float           @default(0) @map("price_monthly")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  deletedAt          DateTime?       @map("deleted_at")
+  companies          TenantCompany[]
+
+  @@map("subscription_plans")
+}
+
+model TenantCompany {
+  id                 String              @id @default(uuid())
+  name               String
+  legalName          String?             @map("legal_name")
+  registrationNumber String?             @map("registration_number")
+  taxId              String?             @map("tax_id")
+  currencyCode       String              @default("USD") @map("currency_code")
+  fiscalYearStart    String              @default("01-01") @map("fiscal_year_start")
+  countryCode        String              @map("country_code")
+  timezone           String
+  logoUrl            String?             @map("logo_url")
+  planId             String              @map("plan_id")
+  status             String              @default("trial")
+
+  trialEndsAt        DateTime?           @map("trial_ends_at")
+  ownerId            String              @map("owner_id")
+  legacyCompanyId    Int?                @unique @map("legacy_company_id")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
+  owner              TenantUser          @relation("tenant_company_owner", fields: [ownerId], references: [id])
+  plan               SubscriptionPlan    @relation(fields: [planId], references: [id])
+  memberships        UserCompanyMembership[]
+  roles              RoleDefinition[]
+  sessions           ActiveSession[]
+  logs               IdentityAuditLog[]
+
+  @@index([ownerId])
+  @@index([planId])
+  @@index([status])
+  @@map("companies")
+}
+
+model UserCompanyMembership {
+  id                  String            @id @default(uuid())
+  userId              String            @map("user_id")
+  companyId           String            @map("company_id")
+  roleId              String            @map("role_id")
+  invitedBy           String?           @map("invited_by")
+  invitationToken     String?           @map("invitation_token")
+  invitationExpiresAt DateTime?         @map("invitation_expires_at")
+  status              String            @default("pending")
+
+  joinedAt            DateTime?         @map("joined_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  deletedAt           DateTime?         @map("deleted_at")
+  user                TenantUser        @relation(fields: [userId], references: [id])
+  company             TenantCompany     @relation(fields: [companyId], references: [id])
+  role                RoleDefinition    @relation(fields: [roleId], references: [id])
+  inviter             TenantUser?       @relation("membership_invited_by", fields: [invitedBy], references: [id])
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([status])
+  @@index([invitationToken])
+  @@map("user_company_memberships")
+}
+
+model RoleDefinition {
+  id            String                  @id @default(uuid())
+  companyId     String?                 @map("company_id")
+  name          String
+  isSystemRole  Boolean                 @default(false) @map("is_system_role")
+  description   String
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+  deletedAt     DateTime?               @map("deleted_at")
+  company       TenantCompany?          @relation(fields: [companyId], references: [id])
+  memberships   UserCompanyMembership[]
+  permissions   RolePermission[]
+
+  @@unique([companyId, name])
+  @@index([isSystemRole])
+  @@map("roles")
+}
+
+model PermissionDefinition {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  module      String
+  description String
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+  roles       RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String               @map("role_id")
+  permissionId String               @map("permission_id")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  deletedAt    DateTime?            @map("deleted_at")
+  role         RoleDefinition       @relation(fields: [roleId], references: [id])
+  permission   PermissionDefinition @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model ActiveSession {
+  id         String       @id @default(uuid())
+  userId     String       @map("user_id")
+  companyId  String?      @map("company_id")
+  tokenHash  String       @map("token_hash")
+  ipAddress  String       @map("ip_address")
+  userAgent  String       @map("user_agent")
+  expiresAt  DateTime     @map("expires_at")
+  revokedAt  DateTime?    @map("revoked_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  deletedAt  DateTime?    @map("deleted_at")
+  user       TenantUser   @relation(fields: [userId], references: [id])
+  company    TenantCompany? @relation(fields: [companyId], references: [id])
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@index([companyId])
+  @@map("active_sessions")
+}
+
+model IdentityAuditLog {
+  id         String        @id @default(uuid())
+  companyId  String?       @map("company_id")
+  userId     String?       @map("user_id")
+  action     String
+  entityType String        @map("entity_type")
+  entityId   String?       @map("entity_id")
+  oldValues  String?       @map("old_values")
+  newValues  String?       @map("new_values")
+  ipAddress  String        @map("ip_address")
+  userAgent  String        @map("user_agent")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  company    TenantCompany? @relation(fields: [companyId], references: [id])
+  user       TenantUser?   @relation(fields: [userId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Products & Services Module ───────────────────────────────────────────────
+
+model ProductService {
+  id                        Int       @id @default(autoincrement())
+  companyId                 Int
+  // Core identification
+  code                      String
+  name                      String
+  description               String?
+  // Classification
+  type                      String    @default("PRODUCT")   // PRODUCT | SERVICE
+  isTracked                 Boolean   @default(false)
+  // Sell-side
+  isSold                    Boolean   @default(true)
+  salesDescription          String?
+  salesPrice                Float     @default(0)
+  salesAccountId            Int?
+  salesTaxRate              Float     @default(0)
+  // Purchase-side
+  isPurchased               Boolean   @default(true)
+  purchaseDescription       String?
+  purchasePrice             Float     @default(0)
+  purchaseAccountId         Int?
+  purchaseTaxRate           Float     @default(0)
+  // Inventory tracking (only when isTracked = true)
+  inventoryAssetAccountId   Int?
+  openingQuantity           Float     @default(0)
+  openingValue              Float     @default(0)
+  quantityOnHand            Float     @default(0)
+  averageCost               Float     @default(0)
+  reorderLevel              Float     @default(0)
+  unit                      String?   @default("pcs")
+  // Status
+  status                    String    @default("ACTIVE")    // ACTIVE | ARCHIVED
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  createdBy                 String
+  stockMovements            ItemStockMovement[]
+
+  @@unique([companyId, code])
+  @@index([companyId, status])
+  @@index([companyId, type])
+}
+
+model ItemStockMovement {
+  id                Int             @id @default(autoincrement())
+  companyId         Int
+  productId         Int
+  date              DateTime
+  movementType      String          // OPENING | SALE | PURCHASE | ADJUSTMENT | RETURN
+  referenceType     String?         // INVOICE | BILL | MANUAL
+  referenceId       Int?
+  referenceNo       String?
+  quantityIn        Float           @default(0)
+  quantityOut       Float           @default(0)
+  balanceQty        Float           @default(0)
+  unitCost          Float           @default(0)
+  totalValue        Float           @default(0)
+  narration         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  createdBy         String
+  product           ProductService  @relation(fields: [productId], references: [id])
+
+  @@index([companyId, productId])
+  @@index([companyId, date])
+}
+
+// ── Settlement / Set-off Table ─────────────────────────────────────────────
+// Tracks every linkage: CreditNote→Invoice, DebitNote→Bill, Payment→Invoice,
+// Payment→Bill. Enables multi-invoice payment splits and partial credit notes.
+model DocumentSettlement {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+
+  // Source: what is being applied (CREDIT_NOTE | DEBIT_NOTE | PAYMENT)
+  sourceType    String
+  sourceNoteId  Int?     // FK → NoteDocument
+  sourcePaymentId Int?   // FK → Payment
+
+  // Target: what it is applied to (INVOICE | BILL)
+  targetType    String
+  targetInvoiceId Int?   // FK → Invoice
+  targetBillId    Int?   // FK → Bill
+
+  amount        Float
+  settledAt     DateTime @default(now())
+  notes         String?
+  status        String   @default("ACTIVE")  // ACTIVE | REVERSED
+  reversedAt    DateTime?
+  reversedBy    String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+
+  sourceNote    NoteDocument? @relation("SettlementSourceNote",    fields: [sourceNoteId],    references: [id])
+  sourcePayment Payment?      @relation("SettlementSourcePayment", fields: [sourcePaymentId], references: [id])
+  targetInvoice Invoice?      @relation("SettlementTargetInvoice", fields: [targetInvoiceId], references: [id])
+  targetBill    Bill?         @relation("SettlementTargetBill",    fields: [targetBillId],    references: [id])
+
+  @@index([companyId])
+  @@index([companyId, targetInvoiceId])
+  @@index([companyId, targetBillId])
+  @@index([companyId, sourceNoteId])
+  @@index([companyId, sourcePaymentId])
+}
+

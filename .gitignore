@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pnpm-store/
+.corepack/
+
+# Environment Variables (Secrets Protection)
+.env
+.env.local
+.env.*.local
+*.env
+packages/*/.env
+packages/*/.env.local
+packages/*/.env.*.local
+
+# Allow example configs
+!.env.example
+!packages/*/.env.example
+
+# Build Outputs
+dist/
+dist-ssr/
+out/
+.next/
+*/dist/
+*/.next/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+backend-*.log
+frontend-*.log
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

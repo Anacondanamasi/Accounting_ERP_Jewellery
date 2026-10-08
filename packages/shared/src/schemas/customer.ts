@@ -1,0 +1,37 @@
+import { z } from "zod";
+
+export const customerSchema = z.object({
+  code: z.string().optional(),
+  type: z.enum(["BUSINESS", "INDIVIDUAL"]).default("INDIVIDUAL"),
+  category: z.string().optional().nullable(),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  companyName: z.string().optional().nullable(),
+  email: z.string().email("Invalid email address").optional().nullable().or(z.literal("")),
+  mobile: z.string().optional().nullable(),
+  workPhone: z.string().optional().nullable(),
+  gstin: z.string().optional().nullable(),
+  pan: z.string().optional().nullable(),
+  currency: z.string().default("INR"),
+  openingBalance: z.coerce.number().nonnegative().default(0),
+  creditLimit: z.coerce.number().nonnegative().default(0),
+  creditDays: z.coerce.number().int().nonnegative().default(0),
+  paymentTerms: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  billingAddress: z.object({
+    street: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    state: z.string().optional().nullable(),
+    zip: z.string().optional().nullable(),
+    country: z.string().default("India"),
+  }).optional(),
+  shippingAddress: z.object({
+    street: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    state: z.string().optional().nullable(),
+    zip: z.string().optional().nullable(),
+    country: z.string().default("India"),
+  }).optional(),
+});
+
+export type CustomerInput = z.infer<typeof customerSchema>;

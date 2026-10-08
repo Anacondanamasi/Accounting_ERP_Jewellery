@@ -1,0 +1,845 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Archive,
+  Building2,
+  CheckCircle2,
+  Download,
+  FileDown,
+  FileText,
+  Keyboard,
+  Layers,
+  Loader2,
+  Lock,
+  Pencil,
+  Plus,
+  Search,
+  Upload,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+
+import { formatCurrency } from "@/lib/formatters";
+import { accountsService } from "@/services/accountsService";
+import { AccountFormModal } from "./AccountFormModal";
+import { AccountGroupModal } from "./AccountGroupModal";
+import { BankAccountFormModal } from "./BankAccountFormModal";
+
+interface AccountRow {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  heading: string;
+  group: string;
+  groupId?: number | null;
+  type: string;
+  taxCode?: string | null;
+  openingBalance: number;
+  isActive: boolean;
+  isControlAccount?: boolean;
+}
+
+interface AccountGroup {
+  id: number;
+  name: string;
+  heading: string;
+  type: string;
+  isActive: boolean;
+}
+
+interface ImportRow {
+  code: string;
+  name: string;
+  description: string;
+  type: string;
+  group: string;
+  openingBalance: number;
+  taxCode: string;
+  isActive: boolean;
+}
+
+const TABS = ["All Accounts", "Assets", "Liabilities", "Equity", "Expenses", "Revenue", "Archive", "Groups"];
+const EXPORT_HEADERS = ["code", "name", "heading", "group", "type", "taxCode", "openingBalance", "isActive", "description"];
+const IMPORT_TEMPLATE = "code,name,type,group,openingBalance,taxCode,isActive,description\n1200,Sample Asset,Current Asset,Current Assets,0,Tax Exempt (0%),true,Imported account\n";
+
+const accountTypeFallback = (type: string) => type || "Expense";
+
+const isEditableTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable;
+};
+
+const downloadFile = (fileName: string, content: string, type: string) => {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+const escapeCsv = (value: unknown) => {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const exportAccountsCsv = (rows: AccountRow[]) => {
+  const csv = [
+    EXPORT_HEADERS.join(","),
+    ...rows.map((row) => EXPORT_HEADERS.map((key) => escapeCsv(row[key as keyof AccountRow])).join(",")),
+  ].join("\n");
+  downloadFile(`chart-of-accounts-${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
+};
+
+const escapeHtml = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const exportAccountsPdf = (rows: AccountRow[]) => {
+  const printWindow = window.open("", "_blank", "width=1120,height=760");
+  if (!printWindow) {
+    toast.error("Allow pop-ups to export the PDF");
+    return;
+  }
+
+  const bodyRows = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(row.code)}</td>
+          <td><strong>${escapeHtml(row.name)}</strong><br><span>${escapeHtml(row.description || "")}</span></td>
+          <td>${escapeHtml(row.group)}</td>
+          <td>${escapeHtml(row.type)}</td>
+          <td>${escapeHtml(row.taxCode || "Tax Exempt (0%)")}</td>
+          <td class="right">${escapeHtml(formatCurrency(row.openingBalance))}</td>
+        </tr>`,
+    )
+    .join("");
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>Chart of Accounts</title>
+        <style>
+          @page { margin: 18mm; }
+          * { box-sizing: border-box; }
+          body { color: #1a1d23; font-family: Inter, Arial, sans-serif; margin: 0; }
+          header { align-items: flex-end; border-bottom: 2px solid #c9922a; display: flex; justify-content: space-between; margin-bottom: 20px; padding-bottom: 12px; }
+          h1 { font-size: 24px; margin: 0; }
+          p { color: #6b7280; margin: 4px 0 0; }
+          table { border-collapse: collapse; font-size: 12px; width: 100%; }
+          th { background: #fdf8ee; color: #1a1d23; text-align: left; }
+          th, td { border-bottom: 1px solid #ede8df; padding: 9px 8px; vertical-align: top; }
+          span { color: #64748b; font-size: 11px; }
+          .right { text-align: right; white-space: nowrap; }
+        </style>
+      </head>
+      <body>
+        <header>
+          <div>
+            <h1>Chart of Accounts</h1>
+            <p>${rows.length} account${rows.length === 1 ? "" : "s"} exported on ${new Date().toLocaleDateString()}</p>
+          </div>
+          <p>JewelLedger Pro</p>
+        </header>
+        <table>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Group</th>
+              <th>Type</th>
+              <th>Tax Rate</th>
+              <th class="right">YTD</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+        <script>
+          window.onload = () => {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+};
+
+const parseCsv = (text: string) => {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(current.trim());
+      current = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(current.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+};
+
+const normalizeHeader = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const buildImportRows = (text: string) => {
+  const [headerRow, ...dataRows] = parseCsv(text);
+  if (!headerRow || dataRows.length === 0) return { rows: [], errors: ["CSV needs a header row and at least one account row."] };
+
+  const headers = headerRow.map(normalizeHeader);
+  const pick = (row: string[], names: string[]) => {
+    const index = headers.findIndex((header) => names.includes(header));
+    return index >= 0 ? row[index] ?? "" : "";
+  };
+
+  const errors: string[] = [];
+  const rows = dataRows
+    .map((row, index) => {
+      const code = pick(row, ["code", "accountcode"]);
+      const name = pick(row, ["name", "accountname"]);
+      if (!code || !name) errors.push(`Row ${index + 2}: code and name are required.`);
+
+      return {
+        code,
+        name,
+        description: pick(row, ["description", "notes"]),
+        type: pick(row, ["type", "accounttype"]),
+        group: pick(row, ["group", "accountgroup"]),
+        openingBalance: Number(pick(row, ["openingbalance", "balance", "ytd"]) || 0),
+        taxCode: pick(row, ["taxcode", "taxrate", "tax"]),
+        isActive: !["false", "no", "0", "archived"].includes(pick(row, ["isactive", "active", "status"]).toLowerCase()),
+      };
+    })
+    .filter((row) => row.code && row.name);
+
+  return { rows, errors };
+};
+
+export const AccountsPage = () => {
+  const queryClient = useQueryClient();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState("All Accounts");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<AccountRow | null>(null);
+  const [selectedGroupData, setSelectedGroupData] = useState<AccountGroup | null>(null);
+
+  const { data: accounts = [], isLoading } = useQuery<AccountRow[]>({
+    queryKey: ["accounts"],
+    queryFn: () => accountsService.list({}),
+  });
+
+  const { data: groups = [] } = useQuery<AccountGroup[]>({
+    queryKey: ["account-groups"],
+    queryFn: () => accountsService.listGroups(),
+  });
+
+  const importPreview = useMemo(() => buildImportRows(importText), [importText]);
+
+  const filteredAccounts = useMemo(() => {
+    let filtered = accounts;
+
+    if (activeTab === "Archive") {
+      filtered = filtered.filter((account) => !account.isActive);
+    } else {
+      filtered = filtered.filter((account) => account.isActive);
+      if (activeTab !== "All Accounts" && activeTab !== "Groups") {
+        filtered = filtered.filter((account) => account.heading === activeTab.toUpperCase());
+      }
+    }
+
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (account) =>
+          account.code?.toLowerCase().includes(lowerQuery) ||
+          account.name?.toLowerCase().includes(lowerQuery) ||
+          account.group?.toLowerCase().includes(lowerQuery) ||
+          account.type?.toLowerCase().includes(lowerQuery),
+      );
+    }
+
+    return filtered;
+  }, [accounts, activeTab, searchQuery]);
+
+  const activeRows = activeTab === "Groups" ? [] : filteredAccounts;
+  const selectableRows = activeRows.filter((account) => !account.isControlAccount);
+  const selectedRows = activeRows.filter((account) => selectedIds.includes(account.id));
+  const exportRows = selectedRows.length > 0 ? selectedRows : activeRows;
+  const allVisibleSelected = selectableRows.length > 0 && selectableRows.every((account) => selectedIds.includes(account.id));
+
+  useEffect(() => {
+    setSelectedIds((current) => current.filter((id) => activeRows.some((account) => account.id === id)));
+  }, [activeRows]);
+
+  const openAddModal = () => {
+    setSelectedAccount(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (account: AccountRow) => {
+    setSelectedAccount(account);
+    setIsModalOpen(true);
+  };
+
+  const toggleSelected = (accountId: number) => {
+    setSelectedIds((current) => (current.includes(accountId) ? current.filter((id) => id !== accountId) : [...current, accountId]));
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedIds(allVisibleSelected ? [] : selectableRows.map((account) => account.id));
+  };
+
+  const handleExportCsv = () => {
+    if (exportRows.length === 0) {
+      toast.error("No accounts to export");
+      return;
+    }
+    exportAccountsCsv(exportRows);
+    toast.success(`${exportRows.length} account${exportRows.length === 1 ? "" : "s"} exported to CSV`);
+  };
+
+  const handleExportPdf = () => {
+    if (exportRows.length === 0) {
+      toast.error("No accounts to export");
+      return;
+    }
+    exportAccountsPdf(exportRows);
+  };
+
+  const importMutation = useMutation({
+    mutationFn: async (rows: ImportRow[]) => {
+      let createdCount = 0;
+      let updatedCount = 0;
+      const failures: string[] = [];
+
+      for (const row of rows) {
+        try {
+          const existing = accounts.find((account) => account.code.toLowerCase() === row.code.toLowerCase());
+          const group = groups.find((item) => item.name.toLowerCase() === row.group.toLowerCase());
+          const payload = {
+            code: row.code,
+            name: row.name,
+            description: row.description || null,
+            groupId: group?.id ?? null,
+            type: group?.type ?? accountTypeFallback(row.type),
+            openingBalance: Number.isFinite(row.openingBalance) ? row.openingBalance : 0,
+            taxCode: row.taxCode || "Tax Exempt (0%)",
+            isActive: row.isActive,
+          };
+
+          if (existing) {
+            await accountsService.update(existing.id, payload);
+            updatedCount += 1;
+          } else {
+            await accountsService.create(payload);
+            createdCount += 1;
+          }
+        } catch (error: any) {
+          failures.push(`${row.code}: ${error?.response?.data?.error?.message ?? "Import failed"}`);
+        }
+      }
+
+      return { createdCount, updatedCount, failures };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      if (result.failures.length > 0) {
+        toast.error(`${result.failures.length} row${result.failures.length === 1 ? "" : "s"} failed. ${result.failures[0]}`);
+      } else {
+        toast.success(`${result.createdCount} created, ${result.updatedCount} updated`);
+        setIsImportOpen(false);
+        setImportText("");
+      }
+    },
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const modifier = event.metaKey || event.ctrlKey;
+
+      if (modifier && key === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (isEditableTarget(event.target)) return;
+
+      if (key === "/") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (!event.altKey) return;
+
+      const shortcuts: Record<string, () => void> = {
+        a: openAddModal,
+        b: () => setIsBankModalOpen(true),
+        i: () => setIsImportOpen(true),
+        e: handleExportCsv,
+        p: handleExportPdf,
+        g: () => setActiveTab("Groups"),
+      };
+
+      if (shortcuts[key]) {
+        event.preventDefault();
+        shortcuts[key]();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeRows, exportRows, groups, accounts]);
+
+  const handleFileChange = async (file?: File) => {
+    if (!file) return;
+    setImportText(await file.text());
+  };
+
+  const runImport = () => {
+    if (importPreview.errors.length > 0) {
+      toast.error(importPreview.errors[0]);
+      return;
+    }
+    if (importPreview.rows.length === 0) {
+      toast.error("Add CSV rows before importing");
+      return;
+    }
+    importMutation.mutate(importPreview.rows);
+  };
+
+  return (
+    <div className="mx-auto flex max-w-[1360px] flex-col gap-5 px-4 pb-8 pt-5 sm:px-6">
+      <section className="rounded-card border border-border bg-card shadow-card">
+        <div className="flex flex-col gap-4 border-b border-border px-5 py-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              <span>Settings</span>
+              <span>/</span>
+              <span>Ledger</span>
+            </div>
+            <h1 className="font-display text-3xl font-bold text-charcoal">Chart of accounts</h1>
+            <p className="mt-1 text-sm text-muted">
+              {accounts.length} accounts, {groups.length} groups. Use shortcuts or tab through every action.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              aria-label="Add account"
+              className="inline-flex h-10 items-center gap-2 rounded-btn bg-charcoal px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-charcoal/90 focus:outline-none focus:ring-2 focus:ring-charcoal focus:ring-offset-2"
+              onClick={openAddModal}
+              title="Add Account (Alt+A)"
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              Add Account
+            </button>
+            <button
+              aria-label="Add bank account"
+              className="inline-flex h-10 items-center gap-2 rounded-btn border border-border bg-white px-4 text-sm font-semibold text-charcoal shadow-sm transition-colors hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+              onClick={() => setIsBankModalOpen(true)}
+              title="Add Bank Account (Alt+B)"
+              type="button"
+            >
+              <Building2 className="h-4 w-4 text-gold" />
+              Add Bank
+            </button>
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded-btn border border-border bg-white px-4 text-sm font-semibold text-charcoal shadow-sm transition-colors hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+              onClick={() => setIsImportOpen(true)}
+              title="Bulk Import CSV (Alt+I)"
+              type="button"
+            >
+              <Upload className="h-4 w-4 text-sapphire" />
+              Import CSV
+            </button>
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded-btn border border-border bg-white px-4 text-sm font-semibold text-charcoal shadow-sm transition-colors hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+              onClick={handleExportCsv}
+              title="Export CSV (Alt+E)"
+              type="button"
+            >
+              <Download className="h-4 w-4 text-emerald" />
+              Export CSV
+            </button>
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded-btn border border-border bg-white px-4 text-sm font-semibold text-charcoal shadow-sm transition-colors hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+              onClick={handleExportPdf}
+              title="Export PDF (Alt+P)"
+              type="button"
+            >
+              <FileText className="h-4 w-4 text-ruby" />
+              Export PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 px-5 py-4 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Account filters">
+            {TABS.map((tab) => (
+              <button
+                aria-selected={activeTab === tab}
+                className={`h-9 shrink-0 rounded-btn px-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2 ${
+                  activeTab === tab ? "bg-gold text-white shadow-sm" : "border border-border bg-white text-charcoal hover:bg-canvas"
+                }`}
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                role="tab"
+                title={tab === "Groups" ? "Groups (Alt+G)" : tab}
+                type="button"
+              >
+                {tab === "Archive" && <Archive className="mr-2 inline h-3.5 w-3.5" />}
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative min-w-0 sm:min-w-[360px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input
+              aria-label="Search accounts"
+              className="h-10 w-full rounded-btn border border-border bg-white pl-10 pr-24 text-sm outline-none transition-colors placeholder:text-muted focus:border-gold focus:ring-2 focus:ring-gold/20"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search code, name, group or type"
+              ref={searchInputRef}
+              title="Search (/ or Ctrl+K)"
+              value={searchQuery}
+            />
+            <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-canvas px-2 py-0.5 text-[11px] font-semibold text-muted">
+              Ctrl K
+            </kbd>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-canvas/60 px-5 py-3 text-sm text-muted">
+          <div className="flex items-center gap-2">
+            <Keyboard className="h-4 w-4" />
+            <span>Hover actions for shortcuts. Selected rows export first.</span>
+          </div>
+          <div className="font-medium text-charcoal">
+            {selectedRows.length > 0 ? `${selectedRows.length} selected` : `${activeRows.length} visible`}
+          </div>
+        </div>
+      </section>
+
+      {activeTab === "Groups" ? (
+        <section className="rounded-card border border-border bg-card shadow-card">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2 className="font-display text-xl font-bold">Account groups</h2>
+              <p className="text-sm text-muted">Group accounts by type and reporting heading.</p>
+            </div>
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-btn bg-gold px-3 text-sm font-semibold text-white shadow-sm hover:bg-gold/90 focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+              onClick={() => {
+                setSelectedGroupData(null);
+                setIsGroupModalOpen(true);
+              }}
+              title="Add Group"
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              Add Group
+            </button>
+          </div>
+          <div className="max-h-[60vh] overflow-auto">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-gold-tint text-left text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="border-b border-border px-4 py-3">Group Name</th>
+                  <th className="border-b border-border px-4 py-3">Account Type</th>
+                  <th className="border-b border-border px-4 py-3">Heading</th>
+                  <th className="border-b border-border px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((group) => (
+                  <tr className="border-b border-border/70 hover:bg-canvas/70" key={group.id}>
+                    <td className="px-4 py-3 font-semibold text-charcoal">{group.name}</td>
+                    <td className="px-4 py-3 text-slate-600">{group.type}</td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{group.heading}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        className="inline-flex h-8 items-center gap-2 rounded-btn border border-border px-3 text-xs font-semibold text-charcoal hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+                        onClick={() => {
+                          setSelectedGroupData(group);
+                          setIsGroupModalOpen(true);
+                        }}
+                        title="Edit group"
+                        type="button"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {groups.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-12 text-center text-muted" colSpan={4}>
+                      No groups created yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <section className="overflow-hidden rounded-card border border-border bg-card shadow-card">
+          <div className="max-h-[64vh] overflow-auto">
+            <table className="w-full min-w-[1040px] border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-gold-tint text-left text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="w-12 border-b border-border px-4 py-3">
+                    <input
+                      aria-label="Select all visible accounts"
+                      checked={allVisibleSelected}
+                      className="h-4 w-4 rounded border-border text-gold focus:ring-gold"
+                      onChange={toggleAllVisible}
+                      type="checkbox"
+                    />
+                  </th>
+                  <th className="border-b border-border px-4 py-3">Code</th>
+                  <th className="border-b border-border px-4 py-3">Name</th>
+                  <th className="border-b border-border px-4 py-3">Group</th>
+                  <th className="border-b border-border px-4 py-3">Type</th>
+                  <th className="border-b border-border px-4 py-3">Tax Rate</th>
+                  <th className="border-b border-border px-4 py-3 text-right">YTD</th>
+                  <th className="border-b border-border px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading && (
+                  <tr>
+                    <td className="px-4 py-12 text-center text-muted" colSpan={8}>
+                      <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-gold" />
+                      Loading accounts...
+                    </td>
+                  </tr>
+                )}
+                {!isLoading &&
+                  activeRows.map((account) => (
+                    <tr className="border-b border-border/70 transition-colors hover:bg-canvas/70" key={account.id}>
+                      <td className="px-4 py-3">
+                        {account.isControlAccount ? (
+                          <Lock className="h-4 w-4 text-muted" aria-label="Control account" />
+                        ) : (
+                          <input
+                            aria-label={`Select ${account.name}`}
+                            checked={selectedIds.includes(account.id)}
+                            className="h-4 w-4 rounded border-border text-gold focus:ring-gold"
+                            onChange={() => toggleSelected(account.id)}
+                            type="checkbox"
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-charcoal">{account.code}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="text-left font-semibold text-sapphire hover:underline focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+                          onClick={() => openEditModal(account)}
+                          title="Edit account"
+                          type="button"
+                        >
+                          {account.name}
+                        </button>
+                        {account.description && <div className="mt-0.5 max-w-[340px] truncate text-xs text-muted">{account.description}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{account.group || "Ungrouped"}</td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{account.type}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{account.taxCode || "Tax Exempt (0%)"}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-sapphire">{formatCurrency(account.openingBalance)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          className="inline-flex h-8 items-center gap-2 rounded-btn border border-border px-3 text-xs font-semibold text-charcoal hover:bg-white focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+                          onClick={() => openEditModal(account)}
+                          title="Edit account"
+                          type="button"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                {!isLoading && activeRows.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-14 text-center text-muted" colSpan={8}>
+                      <Layers className="mx-auto mb-3 h-8 w-8 text-gold" />
+                      No accounts match this view.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {isImportOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-charcoal/50 p-4 backdrop-blur-sm">
+          <section className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-card border border-border bg-card shadow-modal">
+            <div className="flex items-start justify-between border-b border-border px-6 py-5">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-charcoal">Bulk import accounts</h2>
+                <p className="mt-1 text-sm text-muted">CSV columns: code, name, type, group, openingBalance, taxCode, isActive, description.</p>
+              </div>
+              <button
+                className="grid h-9 w-9 place-items-center rounded-full text-muted hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold"
+                onClick={() => setIsImportOpen(false)}
+                title="Close"
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-4 overflow-auto p-6 lg:grid-cols-[1fr_320px]">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(event) => handleFileChange(event.target.files?.[0])}
+                    ref={fileInputRef}
+                    type="file"
+                  />
+                  <button
+                    className="inline-flex h-10 items-center gap-2 rounded-btn border border-border px-4 text-sm font-semibold hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+                    onClick={() => fileInputRef.current?.click()}
+                    type="button"
+                  >
+                    <FileDown className="h-4 w-4 text-sapphire" />
+                    Choose CSV
+                  </button>
+                  <button
+                    className="inline-flex h-10 items-center gap-2 rounded-btn border border-border px-4 text-sm font-semibold hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+                    onClick={() => downloadFile("accounts-import-template.csv", IMPORT_TEMPLATE, "text/csv;charset=utf-8")}
+                    type="button"
+                  >
+                    <Download className="h-4 w-4 text-emerald" />
+                    Template
+                  </button>
+                </div>
+
+                <textarea
+                  className="h-64 w-full resize-none rounded-btn border border-border bg-white p-3 font-mono text-xs outline-none focus:border-gold focus:ring-2 focus:ring-gold/20"
+                  onChange={(event) => setImportText(event.target.value)}
+                  placeholder={IMPORT_TEMPLATE}
+                  value={importText}
+                />
+
+                {importPreview.errors.length > 0 && (
+                  <div className="rounded-btn border border-ruby/20 bg-ruby/5 px-3 py-2 text-sm text-ruby">{importPreview.errors[0]}</div>
+                )}
+              </div>
+
+              <aside className="rounded-card border border-border bg-canvas/70 p-4">
+                <h3 className="font-semibold text-charcoal">Import preview</h3>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-btn bg-white p-3">
+                    <div className="text-2xl font-bold text-charcoal">{importPreview.rows.length}</div>
+                    <div className="text-xs text-muted">valid rows</div>
+                  </div>
+                  <div className="rounded-btn bg-white p-3">
+                    <div className="text-2xl font-bold text-charcoal">{importPreview.errors.length}</div>
+                    <div className="text-xs text-muted">issues</div>
+                  </div>
+                </div>
+                <div className="mt-4 max-h-52 space-y-2 overflow-auto">
+                  {importPreview.rows.slice(0, 8).map((row) => (
+                    <div className="rounded-btn bg-white px-3 py-2 text-sm" key={`${row.code}-${row.name}`}>
+                      <div className="font-semibold text-charcoal">{row.code} - {row.name}</div>
+                      <div className="text-xs text-muted">{row.type || "Expense"} / {row.group || "Ungrouped"}</div>
+                    </div>
+                  ))}
+                  {importPreview.rows.length === 0 && <p className="text-sm text-muted">Paste or choose a CSV to preview rows.</p>}
+                </div>
+              </aside>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4">
+              <div className="flex items-center gap-2 text-sm text-muted">
+                <CheckCircle2 className="h-4 w-4 text-emerald" />
+                Existing account codes will be updated; new codes will be created.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="h-10 rounded-btn border border-border px-4 text-sm font-semibold hover:bg-canvas focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+                  onClick={() => setIsImportOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="inline-flex h-10 items-center gap-2 rounded-btn bg-gold px-4 text-sm font-bold text-white shadow-sm hover:bg-gold/90 focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2 disabled:opacity-60"
+                  disabled={importMutation.isPending}
+                  onClick={runImport}
+                  type="button"
+                >
+                  {importMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Import Accounts
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      <AccountFormModal
+        initialData={selectedAccount}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCreateGroup={() => {
+          setSelectedGroupData(null);
+          setIsGroupModalOpen(true);
+        }}
+      />
+      <BankAccountFormModal isOpen={isBankModalOpen} onClose={() => setIsBankModalOpen(false)} />
+      <AccountGroupModal initialData={selectedGroupData} isOpen={isGroupModalOpen} onClose={() => setIsGroupModalOpen(false)} />
+    </div>
+  );
+};

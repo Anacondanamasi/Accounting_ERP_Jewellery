@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "types": ["node"],
+    "paths": {
+      "@jewelledger/shared": ["../shared/src/index.ts"],
+      "@jewelledger/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src", "prisma"]
+}

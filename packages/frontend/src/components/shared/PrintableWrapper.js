@@ -1,0 +1,2 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+export const PrintableWrapper = ({ children }) => (_jsxs("div", { children: [_jsx("style", { children: `@media print { .no-print { display:none !important; } body { background: #fff; } }` }), _jsx("div", { className: "no-print mb-4", children: _jsx("button", { className: "h-10 rounded-btn border border-border px-4 text-sm", onClick: () => window.print(), type: "button", children: "Print" }) }), children] }));

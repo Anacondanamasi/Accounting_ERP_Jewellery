@@ -1,0 +1,759 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRoleType {
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  SALES
+  VIEW_ONLY
+}
+
+enum DocumentStatus {
+  DRAFT
+  POSTED
+  VOID
+  APPROVED
+  SUBMITTED
+}
+
+model Company {
+  id Int @id @default(autoincrement())
+  name       String
+  gstin      String
+  city       String?
+  state      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  branches   Branch[]
+  users      User[]
+  accountGroups AccountGroup[]
+}
+
+model Branch {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  name       String
+  code       String?
+  address    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  company    Company  @relation(fields: [companyId], references: [id])
+}
+
+model FinancialYear {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  label      String
+  startDate  DateTime
+  endDate    DateTime
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  email      String       @unique
+  fullName   String
+  password   String
+  role       UserRoleType
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  createdBy  String
+  company    Company      @relation(fields: [companyId], references: [id])
+}
+
+model Role {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model Permission {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  module     String
+  action     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model UserRole {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  userId     Int
+  roleId     Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model AuditLog {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  userId     Int
+  tableName  String
+  recordId   Int
+  action     String
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model Notification {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  title      String
+  body       String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model NumberSeries {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  docType    String
+  prefix     String
+  suffix     String?
+  padding    Int      @default(4)
+  current    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model Setting {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  key        String
+  value      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+}
+
+model AccountGroup {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  name       String
+  type       String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  accounts   Account[]
+
+  @@unique([companyId, name])
+  @@index([companyId, type])
+}
+
+model Account {
+    id Int @id @default(autoincrement())
+    companyId       Int
+    code            String
+    name            String
+    group           String
+    groupId         Int?
+    type            String
+    parentId        Int?
+    openingBalance  Decimal  @db.Decimal(18, 2)
+    isActive        Boolean  @default(true)
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+    createdBy       String
+    accountGroup    AccountGroup? @relation(fields: [groupId], references: [id])
+  
+    @@unique([companyId, code])
+    @@index([companyId, groupId])
+  }
+
+model JournalEntry {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  entryNo     String
+  date        DateTime
+  narration   String
+  type        String?
+  status      DocumentStatus @default(DRAFT)
+  postedAt    DateTime?
+  postedBy    String?
+  reversalOf  Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  createdBy   String
+  lines       JournalLine[]
+}
+
+model JournalLine {
+  id Int @id @default(autoincrement())
+  companyId    Int
+  entryId      Int
+  accountId    Int
+  debit        Decimal  @db.Decimal(18, 2)
+  credit       Decimal  @db.Decimal(18, 2)
+  costCentreId Int?
+  narration    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  entry        JournalEntry @relation(fields: [entryId], references: [id])
+}
+
+model JournalTemplate {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  name        String
+  narration   String?
+  lines       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+}
+
+model Customer {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  code        String
+  name        String
+  type        String?
+  category    String?
+  mobile      String?
+  email       String?
+  gstin       String?
+  pan         String?
+  openingBalance Decimal @db.Decimal(18, 2) @default(0)
+  creditLimit Decimal  @db.Decimal(18, 2)
+  creditDays  Int      @default(0)
+  city        String?
+  notes       String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  invoices    Invoice[]
+  payments    Payment[]
+  schemeMembers SchemeMember[]
+
+  @@unique([companyId, code])
+}
+
+model Invoice {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  invoiceNo     String
+  date          DateTime
+  dueDate       DateTime
+  customerId    Int
+  salespersonId Int?
+  status        DocumentStatus @default(DRAFT)
+  currency      String         @default("INR")
+  goldRate22k   Decimal        @db.Decimal(18, 2)
+  goldRate18k   Decimal        @db.Decimal(18, 2)
+  goldRate24k   Decimal        @db.Decimal(18, 2)
+  subTotal      Decimal        @db.Decimal(18, 2)
+  discount      Decimal        @db.Decimal(18, 2)
+  taxableAmount Decimal        @db.Decimal(18, 2)
+  cgst          Decimal        @db.Decimal(18, 2)
+  sgst          Decimal        @db.Decimal(18, 2)
+  igst          Decimal        @db.Decimal(18, 2)
+  grandTotal    Decimal        @db.Decimal(18, 2)
+  paidAmount    Decimal        @db.Decimal(18, 2)
+  balanceDue    Decimal        @db.Decimal(18, 2)
+  notes         String?
+  terms         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  lines         InvoiceItem[]
+  payments      Payment[]
+}
+
+model InvoiceItem {
+  id Int @id @default(autoincrement())
+  companyId    Int
+  invoiceId    Int
+  itemId       Int?
+  sku          String?
+  description  String
+  karat        String
+  grossWt      Decimal  @db.Decimal(10, 3)
+  netWt        Decimal  @db.Decimal(10, 3)
+  stoneWt      Decimal  @db.Decimal(10, 3)
+  makingType   String
+  makingRate   Decimal  @db.Decimal(18, 2)
+  makingAmount Decimal  @db.Decimal(18, 2)
+  ratePerGram  Decimal  @db.Decimal(18, 2)
+  amount       Decimal  @db.Decimal(18, 2)
+  discountPct  Decimal  @db.Decimal(5, 2)
+  gstPct       Decimal  @db.Decimal(5, 2)
+  hsnCode      String
+  huid         String?
+  total        Decimal  @db.Decimal(18, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item         Item?    @relation(fields: [itemId], references: [id])
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+  companyId  Int
+  customerId Int?
+  supplierId Int?
+  invoiceId  Int?
+  billId     Int?
+  type       String
+  date       DateTime
+  mode       String
+  amount     Decimal  @db.Decimal(18, 2)
+  reference  String?
+  receivedBy String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id])
+  bill       Bill?     @relation(fields: [billId], references: [id])
+}
+
+model Supplier {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  code        String
+  name        String
+  category    String?
+  mobile      String?
+  email       String?
+  gstin       String?
+  city        String?
+  openingBalance Decimal @db.Decimal(18, 2) @default(0)
+  creditLimit Decimal  @db.Decimal(18, 2)
+  creditDays  Int      @default(0)
+  notes       String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  bills       Bill[]
+  payments    Payment[]
+
+  @@unique([companyId, code])
+}
+
+model Bill {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  billNo        String
+  date          DateTime
+  dueDate       DateTime
+  supplierId    Int
+  status        DocumentStatus @default(DRAFT)
+  qualityCertUrl String?
+  subTotal      Decimal        @db.Decimal(18, 2)
+  cgst          Decimal        @db.Decimal(18, 2)
+  sgst          Decimal        @db.Decimal(18, 2)
+  igst          Decimal        @db.Decimal(18, 2)
+  paidAmount    Decimal        @db.Decimal(18, 2) @default(0)
+  balanceDue    Decimal        @db.Decimal(18, 2) @default(0)
+  discount      Decimal        @db.Decimal(18, 2) @default(0)
+  taxableAmount Decimal        @db.Decimal(18, 2) @default(0)
+  taxTotal      Decimal        @db.Decimal(18, 2) @default(0)
+  grandTotal    Decimal        @db.Decimal(18, 2)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  lines         BillItem[]
+  payments      Payment[]
+}
+
+model BillItem {
+  id Int @id @default(autoincrement())
+  companyId    Int
+  billId       Int
+  itemId       Int?
+  sku          String
+  description  String
+  karat        String
+  grossWt      Decimal  @db.Decimal(10, 3)
+  netWt        Decimal  @db.Decimal(10, 3)
+  stoneWt      Decimal  @db.Decimal(10, 3)
+  makingType   String
+  makingRate   Decimal  @db.Decimal(18, 2)
+  makingAmount Decimal  @db.Decimal(18, 2)
+  ratePerGram  Decimal  @db.Decimal(18, 2)
+  amount       Decimal  @db.Decimal(18, 2)
+  discountPct  Decimal  @db.Decimal(5, 2)
+  gstPct       Decimal  @db.Decimal(5, 2)
+  hsnCode      String
+  total        Decimal  @db.Decimal(18, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  bill         Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  item         Item?    @relation(fields: [itemId], references: [id])
+}
+
+model Item {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  sku           String
+  name          String
+  category      String
+  subCategory   String?
+  collection    String?
+  metalType     String
+  karat         String
+  grossWt       Decimal  @db.Decimal(10, 3)
+  netWt         Decimal  @db.Decimal(10, 3)
+  stoneWt       Decimal  @db.Decimal(10, 3)
+  wastagePct    Decimal  @db.Decimal(5, 2)
+  costingMethod String
+  makingType    String
+  makingRate    Decimal  @db.Decimal(18, 2)
+  costPrice     Decimal  @db.Decimal(18, 2)
+  mrp           Decimal  @db.Decimal(18, 2)
+  reorderLevel  Decimal  @db.Decimal(10, 3)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+  invoiceItems  InvoiceItem[]
+  billItems     BillItem[]
+  adjustmentLines InventoryAdjustmentLine[]
+
+  @@unique([companyId, sku])
+}
+
+model StockLedger {
+  id Int @id @default(autoincrement())
+  companyId       Int
+  itemId          Int
+  transactionType String
+  referenceType   String
+  referenceId     Int
+  issuedQty       Decimal  @db.Decimal(18, 3)
+  issuedWt        Decimal  @db.Decimal(18, 3)
+  receivedQty     Decimal  @db.Decimal(18, 3)
+  receivedWt      Decimal  @db.Decimal(18, 3)
+  balanceQty      Decimal  @db.Decimal(18, 3)
+  balanceWt       Decimal  @db.Decimal(18, 3)
+  rate            Decimal  @db.Decimal(18, 2)
+  value           Decimal  @db.Decimal(18, 2)
+  narration       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String
+}
+
+model InventoryAdjustment {
+  id Int @id @default(autoincrement())
+  companyId        Int
+  adjNo            String
+  date             DateTime
+  type             String
+  reason           String
+  status           DocumentStatus @default(DRAFT)
+  approvedBy       String?
+  supportingDocUrl String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  createdBy        String
+  lines            InventoryAdjustmentLine[]
+}
+
+model InventoryAdjustmentLine {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  adjustmentId  Int
+  itemId        Int
+  currentQty    Decimal  @db.Decimal(18, 3)
+  currentWt     Decimal  @db.Decimal(18, 3)
+  adjustedQty   Decimal  @db.Decimal(18, 3)
+  adjustedWt    Decimal  @db.Decimal(18, 3)
+  diffQty       Decimal  @db.Decimal(18, 3)
+  diffWt        Decimal  @db.Decimal(18, 3)
+  oldRate       Decimal  @db.Decimal(18, 2)
+  newRate       Decimal  @db.Decimal(18, 2)
+  valueImpact   Decimal  @db.Decimal(18, 2)
+  accountId     Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+  adjustment    InventoryAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  item          Item @relation(fields: [itemId], references: [id])
+}
+
+model MetalRate {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  date           DateTime
+  karat24        Decimal  @db.Decimal(10, 2)
+  karat22        Decimal  @db.Decimal(10, 2)
+  karat18        Decimal  @db.Decimal(10, 2)
+  karat14        Decimal  @db.Decimal(10, 2)
+  silver         Decimal  @db.Decimal(10, 2)
+  source         String?
+  overrideReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+}
+
+model Karigar {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  code           String
+  name           String
+  specialization String?
+  mobile         String?
+  gstin          String?
+  pan            String?
+  goldInHand     Decimal  @db.Decimal(10, 3) @default(0)
+  makingDue      Decimal  @db.Decimal(18, 2) @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+  jobWorkOrders  JobWorkOrder[]
+}
+
+model JobWorkOrder {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  jwoNo         String
+  karigarId     Int
+  karigar       Karigar  @relation(fields: [karigarId], references: [id])
+  issueDate     DateTime
+  expectedDate  DateTime?
+  description   String?
+  goldIssuedG   Decimal  @db.Decimal(10, 3)
+  goldReturnedG Decimal  @db.Decimal(10, 3)
+  allowedLossPct Decimal @db.Decimal(5, 2)
+  makingCharges Decimal  @db.Decimal(18, 2)
+  status        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String
+}
+
+model BankAccount {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  bankName       String
+  accountName    String?
+  accountNo      String?
+  accountNoMasked String?
+  ifsc           String
+  accountType    String
+  openingBalance Decimal  @db.Decimal(18, 2) @default(0)
+  currentBalance Decimal  @db.Decimal(18, 2) @default(0)
+  bookBalance    Decimal  @db.Decimal(18, 2) @default(0)
+  bankBalance    Decimal  @db.Decimal(18, 2) @default(0)
+  unreconciledCount Int    @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+  transactions   BankTransaction[]
+}
+
+model BankTransaction {
+  id Int @id @default(autoincrement())
+  companyId          Int
+  bankAccountId      Int
+  date               DateTime
+  narration          String
+  reference          String?
+  debit              Decimal  @db.Decimal(18, 2)
+  credit             Decimal  @db.Decimal(18, 2)
+  balance            Decimal  @db.Decimal(18, 2)
+  isReconciled       Boolean  @default(false)
+  reconciledAt       DateTime?
+  matchedJournalLineId Int?
+  importBatchId      Int?
+  source             String   @default("BANK_STATEMENT")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdBy          String
+  bankAccount        BankAccount @relation(fields: [bankAccountId], references: [id])
+}
+
+model BankReconciliation {
+  id Int @id @default(autoincrement())
+  companyId            Int
+  bankAccountId        Int
+  month                Int
+  year                 Int
+  balancePerBank       Decimal  @db.Decimal(18, 2)
+  depositsInTransit    Decimal  @db.Decimal(18, 2)
+  outstandingCheques   Decimal  @db.Decimal(18, 2)
+  adjustedBankBalance  Decimal  @db.Decimal(18, 2)
+  balancePerBooks      Decimal  @db.Decimal(18, 2)
+  difference           Decimal  @db.Decimal(18, 2)
+  status               String
+  finalizedAt          DateTime?
+  finalizedBy          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  createdBy            String
+}
+
+model HSNMaster {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  code        String
+  description String
+  gstRate     Decimal  @db.Decimal(5, 2)
+  cessRate    Decimal  @db.Decimal(5, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+}
+
+model GoldScheme {
+  id Int @id @default(autoincrement())
+  companyId      Int
+  name           String
+  monthlyMin     Decimal  @db.Decimal(18, 2)
+  monthlyMax     Decimal  @db.Decimal(18, 2)
+  durationMonths Int
+  bonusType      String
+  bonusValue     Decimal  @db.Decimal(18, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String
+  members        SchemeMember[]
+}
+
+model SchemeMember {
+  id Int @id @default(autoincrement())
+  companyId         Int
+  schemeId          Int
+  customerId        Int
+  enrollDate        DateTime
+  monthlyAmt        Decimal  @db.Decimal(18, 2)
+  totalInstallments Int
+  paidInstallments  Int
+  totalDeposited    Decimal  @db.Decimal(18, 2)
+  bonusAmount       Decimal  @db.Decimal(18, 2)
+  maturityDate      DateTime
+  status            String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String
+  scheme            GoldScheme @relation(fields: [schemeId], references: [id])
+  customer          Customer @relation(fields: [customerId], references: [id])
+}
+
+model Employee {
+  id Int @id @default(autoincrement())
+  companyId       Int
+  code            String
+  name            String
+  designation     String
+  department      String
+  dateOfJoin      DateTime
+  pan             String?
+  aadhaar         String?
+  basicSalary     Decimal  @db.Decimal(18, 2)
+  hra             Decimal  @db.Decimal(18, 2)
+  otherAllowances Decimal  @db.Decimal(18, 2)
+  pfApplicable    Boolean  @default(false)
+  esiApplicable   Boolean  @default(false)
+  bankName        String?
+  accountNo       String?
+  ifsc            String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String
+  salaryRecords   SalaryRecord[]
+}
+
+model SalaryRecord {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  employeeId  Int
+  month       Int
+  year        Int
+  daysWorked  Decimal  @db.Decimal(6, 2)
+  basicEarned Decimal  @db.Decimal(18, 2)
+  hra         Decimal  @db.Decimal(18, 2)
+  allowances  Decimal  @db.Decimal(18, 2)
+  pfDeduction Decimal  @db.Decimal(18, 2)
+  esiDeduction Decimal @db.Decimal(18, 2)
+  tdsDeduction Decimal @db.Decimal(18, 2)
+  netPay      Decimal  @db.Decimal(18, 2)
+  status      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+}
+
+model NoteDocument {
+  id Int @id @default(autoincrement())
+  companyId     Int
+  noteNo        String
+  type          String
+  date          DateTime
+  partyType     String
+  customerId    Int?
+  supplierId    Int?
+  referenceNo   String?
+  reason        String?
+  status        DocumentStatus @default(DRAFT)
+  subTotal      Decimal        @db.Decimal(18, 2) @default(0)
+  taxTotal      Decimal        @db.Decimal(18, 2) @default(0)
+  grandTotal    Decimal        @db.Decimal(18, 2) @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String
+  lines         NoteLine[]
+}
+
+model NoteLine {
+  id Int @id @default(autoincrement())
+  companyId   Int
+  noteId      Int
+  description String
+  quantity    Decimal  @db.Decimal(18, 3) @default(1)
+  rate        Decimal  @db.Decimal(18, 2) @default(0)
+  gstPct      Decimal  @db.Decimal(5, 2) @default(0)
+  amount      Decimal  @db.Decimal(18, 2) @default(0)
+  taxAmount   Decimal  @db.Decimal(18, 2) @default(0)
+  total       Decimal  @db.Decimal(18, 2) @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  note        NoteDocument @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
