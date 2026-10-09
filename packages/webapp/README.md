@@ -1,4 +1,4 @@
-# Jewellery Acing Web App
+# HKS Accounting Web App
 
 This folder is an isolated web app workspace built with **Next.js + Supabase** so your existing mobile app can be ported to web with strict feature parity.
 

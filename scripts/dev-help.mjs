@@ -1,5 +1,5 @@
 const lines = [
-  "JewelLedger Pro - spawn-safe development launcher",
+  "HKS Accounting - spawn-safe development launcher",
   "",
   "This environment blocks child-process spawning (EPERM).",
   "Run frontend and backend in separate terminals using:",

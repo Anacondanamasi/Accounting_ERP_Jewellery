@@ -439,7 +439,7 @@ export const getInvoicePdf = async (req: Request, res: Response) => {
 
   const dateLabel = new Date(invoice.date).toISOString().slice(0, 10);
   const pdfLines = [
-    "JewelLedger Pro - Tax Invoice",
+    "HKS Accounting - Tax Invoice",
     `Invoice No: ${invoice.invoiceNo}`,
     `Date: ${dateLabel}`,
     `Customer: ${invoice.customer?.name ?? "-"}`,

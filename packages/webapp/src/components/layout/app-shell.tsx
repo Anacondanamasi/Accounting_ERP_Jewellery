@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4">
           <div>
-            <p className="text-sm text-slate-500">Jewellery Acing Web</p>
+            <p className="text-sm text-slate-500">HKS Accounting</p>
             <h1 className="text-lg font-semibold text-slate-900">Control Panel</h1>
           </div>
           <div className="flex items-center gap-4">

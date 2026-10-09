@@ -85,7 +85,7 @@ const exportAccountsPdf = (rows) => {
             <h1>Chart of Accounts</h1>
             <p>${rows.length} account${rows.length === 1 ? "" : "s"} exported on ${new Date().toLocaleDateString()}</p>
           </div>
-          <p>JewelLedger Pro</p>
+          <p>HKS Accounting</p>
         </header>
         <table>
           <thead>

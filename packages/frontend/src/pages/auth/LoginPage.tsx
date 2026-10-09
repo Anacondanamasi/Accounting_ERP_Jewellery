@@ -56,7 +56,7 @@ export const LoginPage = () => {
     <div className="grid min-h-screen place-items-center bg-canvas p-4">
       <div className="w-full max-w-md rounded-card border border-border bg-card p-8 shadow-card">
         <div className="mb-8 text-center">
-          <h1 className="font-display text-4xl font-bold text-charcoal">JewelLedger Pro</h1>
+          <h1 className="font-display text-4xl font-bold text-charcoal">HKS Accounting</h1>
           <p className="mt-2 text-sm text-muted">Precision accounting for jewellery businesses</p>
         </div>
 

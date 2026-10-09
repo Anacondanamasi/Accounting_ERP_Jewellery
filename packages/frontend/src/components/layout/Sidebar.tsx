@@ -45,11 +45,11 @@ export const Sidebar = () => {
     <aside className="watermark-diagonal fixed left-0 top-0 z-30 h-screen w-sidebar overflow-y-auto bg-charcoal text-white">
       <div className="border-b border-white/10 px-5 pb-4 pt-5">
         <div className="mb-2 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-full bg-gold font-display font-bold text-white">
-            JL
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-gold font-display font-bold text-white text-xs">
+            HKS
           </div>
           <div>
-            <div className="font-display text-base font-semibold">JewelLedger Pro</div>
+            <div className="font-display text-base font-semibold">HKS Accounting</div>
             <div className="text-[11px] text-muted">{currentCompany?.name || "Company Name"}</div>
           </div>
         </div>

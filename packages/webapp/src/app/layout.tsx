@@ -3,8 +3,8 @@ import "./globals.css";
 import { AuthProvider } from "@/providers/auth-provider";
 
 export const metadata: Metadata = {
-  title: "Jewellery Acing Web App",
-  description: "Web application with Supabase auth, user, and admin modules."
+  title: "HKS Accounting",
+  description: "HKS Accounting web application with Supabase auth, user, and admin modules."
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

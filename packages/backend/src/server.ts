@@ -117,5 +117,5 @@ process.on("uncaughtException", (error) => {
 });
 
 app.listen(env.PORT, () => {
-  logger.info(`JewelLedger API running on http://localhost:${env.PORT}`);
+  logger.info(`HKS Accounting API running on http://localhost:${env.PORT}`);
 });
