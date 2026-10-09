@@ -126,8 +126,8 @@ export const createCompany = async (req: Request, res: Response) => {
 
     await prisma.$executeRawUnsafe(
       `INSERT INTO companies
-        (id, name, legal_name, registration_number, tax_id, currency_code, fiscal_year_start, country_code, timezone, logo_url, plan_id, status, trial_ends_at, owner_id, legacy_company_id, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'trial', CURRENT_TIMESTAMP + INTERVAL '14 day', $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        (id, name, legal_name, registration_number, tax_id, currency_code, fiscal_year_start, country_code, timezone, industry, logo_url, plan_id, status, trial_ends_at, owner_id, legacy_company_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'trial', CURRENT_TIMESTAMP + INTERVAL '14 day', $13, $14, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       companyId,
       parsed.data.name,
       parsed.data.legalName ?? null,
@@ -137,6 +137,7 @@ export const createCompany = async (req: Request, res: Response) => {
       parsed.data.fiscalYearStart,
       parsed.data.countryCode.toUpperCase(),
       parsed.data.timezone,
+      parsed.data.industry ?? null,
       parsed.data.logoUrl ?? null,
       planId,
       userId,
@@ -151,6 +152,12 @@ export const createCompany = async (req: Request, res: Response) => {
       userId,
       companyId,
       ownerRoleId,
+    );
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE users SET last_active_org_id = $1 WHERE id = $2`,
+      companyId,
+      userId,
     );
 
     await writeAuditLog({
@@ -230,6 +237,25 @@ export const listCompanies = async (req: Request, res: Response) => {
       membershipStatus: row.membership_status,
     })),
   );
+};
+
+export const switchCompany = async (req: Request, res: Response) => {
+  const userId = requireUser(req, res);
+  if (!userId) return;
+
+  const targetCompanyId = req.params.id;
+  const membership = await getCompanyMembership(userId, targetCompanyId);
+  if (!membership || membership.status !== "active") {
+    return fail(res, 403, "ACCESS_DENIED", "You do not have active membership in this organisation.");
+  }
+
+  await prisma.$executeRawUnsafe(
+    `UPDATE users SET last_active_org_id = $1 WHERE id = $2`,
+    targetCompanyId,
+    userId,
+  );
+
+  return ok(res, { activeCompanyId: targetCompanyId }, "Switched organisation successfully.");
 };
 
 export const getCompanyById = async (req: Request, res: Response) => {
@@ -393,7 +419,20 @@ export const inviteMember = async (req: Request, res: Response) => {
 
   const inviteToken = createSignedToken(
     { type: "invite", companyId, email, userId: userRows[0].id },
-    "48h",
+    "7d",
+  );
+  const tokenHash = crypto.createHash("sha256").update(inviteToken).digest("hex");
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO invitations
+      (id, company_id, email, role_id, token_hash, expires_at, status, invited_by, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP + INTERVAL '7 day', 'pending', $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+    crypto.randomUUID(),
+    companyId,
+    email,
+    parsed.data.roleId,
+    tokenHash,
+    userId,
   );
 
   const existingMembership = (await prisma.$queryRawUnsafe(
@@ -406,7 +445,7 @@ export const inviteMember = async (req: Request, res: Response) => {
   if (existingMembership[0]) {
     await prisma.$executeRawUnsafe(
       `UPDATE user_company_memberships
-      SET role_id = $1, invited_by = $2, invitation_token = $3, invitation_expires_at = CURRENT_TIMESTAMP + INTERVAL '48 hour',
+      SET role_id = $1, invited_by = $2, invitation_token = $3, invitation_expires_at = CURRENT_TIMESTAMP + INTERVAL '7 day',
           status = 'pending', updated_at = CURRENT_TIMESTAMP
       WHERE id = $4`,
       parsed.data.roleId,
@@ -418,7 +457,7 @@ export const inviteMember = async (req: Request, res: Response) => {
     await prisma.$executeRawUnsafe(
       `INSERT INTO user_company_memberships
         (id, user_id, company_id, role_id, invited_by, invitation_token, invitation_expires_at, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP + INTERVAL '48 hour', 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP + INTERVAL '7 day', 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       crypto.randomUUID(),
       userRows[0].id,
       companyId,
@@ -529,6 +568,20 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       SET status = 'active', joined_at = CURRENT_TIMESTAMP, invitation_token = NULL, invitation_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1`,
     membership.id,
+  );
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  await prisma.$executeRawUnsafe(
+    `UPDATE invitations
+      SET status = 'accepted', accepted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE token_hash = $1`,
+    tokenHash,
+  );
+
+  await prisma.$executeRawUnsafe(
+    `UPDATE users SET last_active_org_id = $1 WHERE id = $2`,
+    membership.company_id,
+    currentUser.id,
   );
 
   invalidatePermissionCache(currentUser.id, membership.company_id);

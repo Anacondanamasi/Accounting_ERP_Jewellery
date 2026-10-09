@@ -5,7 +5,9 @@ import { format } from "date-fns";
 import { api } from "@/lib/axios";
 import { useAppStore } from "@/stores/appStore";
 import { useAuthStore } from "@/stores/authStore";
-import { QuickCreateMenu } from "@/components/shared/QuickCreateMenu";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { companyService } from "@/services/companyService";
 
 
 const labelFromPath = (path: string): string =>
@@ -65,6 +67,20 @@ export const Header = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setCommandPaletteOpen]);
 
+  const queryClient = useQueryClient();
+
+  const handleCompanyChange = async (newCompanyId: string) => {
+    if (!newCompanyId || newCompanyId === currentCompanyId) return;
+    try {
+      queryClient.clear();
+      switchCompany(newCompanyId);
+      await companyService.switch(newCompanyId);
+      toast.success("Switched organisation");
+    } catch (err) {
+      console.error("Failed to switch organisation:", err);
+    }
+  };
+
   return (
     <header className="fixed right-0 top-0 z-20 flex h-header items-center justify-between border-b border-border bg-card px-6" style={{ left: "var(--sidebar-w)" }}>
       <div className="text-sm font-medium text-charcoal">{breadcrumb}</div>
@@ -79,12 +95,11 @@ export const Header = () => {
           Cmd+K
         </span>
       </button>
-      <QuickCreateMenu />
       <div className="flex items-center gap-4">
         <select
           className="h-9 rounded border border-border bg-white px-2 text-xs text-charcoal"
           value={currentCompanyId ?? ""}
-          onChange={(event) => switchCompany(event.target.value)}
+          onChange={(event) => void handleCompanyChange(event.target.value)}
         >
           {companies.map((company) => (
             <option key={company.id} value={company.id}>

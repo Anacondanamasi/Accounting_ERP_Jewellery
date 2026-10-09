@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { NAV_ITEMS } from "@/lib/nav";
 import { usePermissionChecks } from "@/lib/permissions";
 import { useAppStore } from "@/stores/appStore";
@@ -48,9 +48,14 @@ export const Sidebar = () => {
           <div className="grid h-10 w-10 place-items-center rounded-full bg-gold font-display font-bold text-white text-xs">
             HKS
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="font-display text-base font-semibold">HKS Accounting</div>
-            <div className="text-[11px] text-muted">{currentCompany?.name || "Company Name"}</div>
+            <div className="flex items-center justify-between text-[11px] text-muted">
+              <span className="truncate">{currentCompany?.name || "Company Name"}</span>
+              <Link to="/onboarding/create-company" title="Create Organisation" className="ml-1 p-0.5 rounded hover:bg-white/10 text-gold hover:text-white transition-colors">
+                <Plus className="h-3.5 w-3.5" />
+              </Link>
+            </div>
           </div>
         </div>
       </div>

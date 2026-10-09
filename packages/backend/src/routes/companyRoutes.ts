@@ -7,6 +7,7 @@ import {
   getCompanyById,
   inviteMember,
   listCompanies,
+  switchCompany,
   listMembers,
   listRoles,
   requestOwnershipTransfer,
@@ -26,6 +27,7 @@ companyRoutes.use(authMiddleware);
 companyRoutes.post("/companies", createCompany);
 companyRoutes.get("/companies", listCompanies);
 companyRoutes.get("/companies/:id", getCompanyById);
+companyRoutes.post("/companies/:id/switch", switchCompany);
 companyRoutes.patch("/companies/:id", requireCompanyContext, requirePermission("settings.company.update"), updateCompany);
 
 companyRoutes.post(

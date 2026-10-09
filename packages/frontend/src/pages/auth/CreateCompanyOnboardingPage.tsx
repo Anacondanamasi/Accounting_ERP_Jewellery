@@ -22,6 +22,7 @@ export const CreateCompanyOnboardingPage = () => {
     currencyCode: "INR",
     fiscalYearStart: "04-01",
     timezone: "Asia/Kolkata",
+    industry: "Jewellery & Luxury Goods",
   });
 
   const canContinue = useMemo(() => {
@@ -44,10 +45,10 @@ export const CreateCompanyOnboardingPage = () => {
         currentCompanyId: createdCompany.id,
       });
       switchCompany(createdCompany.id);
-      toast.success("Company created.");
+      toast.success("Organisation created.");
       navigate("/");
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Unable to create company. Please try again.");
+      toast.error(err.response?.data?.message || "Unable to create organisation. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -55,15 +56,18 @@ export const CreateCompanyOnboardingPage = () => {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
-      <h1 className="font-display text-3xl font-bold text-charcoal">Company setup</h1>
+      <h1 className="font-display text-3xl font-bold text-charcoal">Organisation setup</h1>
       <p className="mt-2 text-sm text-muted">Step {step} of 4</p>
       <div className="mt-6 rounded-card border border-border bg-card p-5">
         {step === 1 ? (
           <div className="space-y-4">
-            <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Company name" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
+            <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Organisation name" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
             <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Legal name (optional)" value={form.legalName} onChange={(event) => setForm((prev) => ({ ...prev, legalName: event.target.value }))} />
-            <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Country code (IN/US)" value={form.countryCode} onChange={(event) => setForm((prev) => ({ ...prev, countryCode: event.target.value.toUpperCase() }))} />
-            <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Currency code (INR/USD)" value={form.currencyCode} onChange={(event) => setForm((prev) => ({ ...prev, currencyCode: event.target.value.toUpperCase() }))} />
+            <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Industry (e.g. Retail Jewellery, Wholesale, Manufacturing)" value={form.industry} onChange={(event) => setForm((prev) => ({ ...prev, industry: event.target.value }))} />
+            <div className="grid grid-cols-2 gap-4">
+              <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Country code (IN/US)" value={form.countryCode} onChange={(event) => setForm((prev) => ({ ...prev, countryCode: event.target.value.toUpperCase() }))} />
+              <input className="h-10 w-full rounded border border-border px-3 text-sm" placeholder="Currency code (INR/USD)" value={form.currencyCode} onChange={(event) => setForm((prev) => ({ ...prev, currencyCode: event.target.value.toUpperCase() }))} />
+            </div>
           </div>
         ) : null}
         {step === 2 ? (

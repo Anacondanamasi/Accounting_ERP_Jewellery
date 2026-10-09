@@ -33,6 +33,7 @@ export const createCompanySchema = z.object({
   fiscalYearStart: z.string().regex(/^\d{2}-\d{2}$/).default("01-01"),
   countryCode: z.string().length(2),
   timezone: z.string().min(2).max(64),
+  industry: z.string().max(80).optional().nullable(),
   logoUrl: z.string().url().optional().nullable(),
 });
 

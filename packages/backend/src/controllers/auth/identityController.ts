@@ -367,7 +367,10 @@ export const login = async (req: Request, res: Response) => {
   );
 
   const memberships = await listMemberships(user.id);
-  const activeMembership = memberships.find((membership) => membership.membership_status === "active") ?? null;
+  const activeMembership =
+    memberships.find((m) => m.company_id === (user as any).last_active_org_id && m.membership_status === "active") ||
+    memberships.find((m) => m.membership_status === "active") ||
+    null;
   const tokens = await issueSessionTokens({
     req,
     user,

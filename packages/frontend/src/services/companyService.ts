@@ -25,5 +25,9 @@ export const companyService = {
     const response = await api.post("/companies", payload);
     return response.data.data as { id: string; name: string };
   },
+  async switch(companyId: string) {
+    const response = await api.post(`/companies/${companyId}/switch`);
+    return response.data.data as { activeCompanyId: string };
+  },
 };
 
