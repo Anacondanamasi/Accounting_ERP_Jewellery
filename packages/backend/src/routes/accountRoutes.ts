@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { ok, created, fail } from "../lib/apiResponse";
 import { authMiddleware } from "../middleware/authMiddleware";
+import { ensureCompanyDefaultAccounts } from "../lib/defaultAccounts";
 
 export const accountRoutes = Router();
 accountRoutes.use(authMiddleware);
@@ -55,6 +56,7 @@ const findGroup = (companyId: any, groupId: number) =>
 
 accountRoutes.get("/", async (req, res) => {
   const companyId = company(req);
+  await ensureCompanyDefaultAccounts(companyId, actor(req));
   const search = req.query.search ? String(req.query.search) : "";
   const type = req.query.type ? String(req.query.type) : "";
   const groupId = req.query.groupId ? Number(req.query.groupId) : undefined;
@@ -81,6 +83,7 @@ accountRoutes.get("/", async (req, res) => {
 
 accountRoutes.get("/groups", async (req, res) => {
   const companyId = company(req);
+  await ensureCompanyDefaultAccounts(companyId, actor(req));
   const rows = await prisma.accountGroup.findMany({
     where: { companyId },
     orderBy: [{ type: "asc" }, { name: "asc" }],

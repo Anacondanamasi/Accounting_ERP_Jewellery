@@ -77,7 +77,7 @@ export const InvoiceListPage = () => {
           col.accessor("invoiceNo", {
             header: "Invoice No",
             cell: (info) => (
-              <Link className="text-sapphire hover:underline" to={`/invoices/${info.row.original.id}`}>
+              <Link className="text-sapphire hover:underline font-semibold" to={`/invoices/${info.row.original.id}/edit`}>
                 {info.getValue()}
               </Link>
             ),
@@ -113,7 +113,7 @@ export const InvoiceListPage = () => {
         ]}
         data={rows}
         loading={isLoading}
-        onRowClick={(row) => navigate(`/invoices/${row.id}`)}
+        onRowClick={(row) => navigate(`/invoices/${row.id}/edit`)}
       />
       <button className="h-9 rounded-btn border border-border px-4 text-sm" onClick={() => void refetch()} type="button">
         Refresh

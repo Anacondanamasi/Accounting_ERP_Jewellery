@@ -27,11 +27,17 @@ export const formatWeight = (grams: number, unit: "g" | "tola" | "ct" = "g"): st
 };
 
 export const formatDate = (
-  value: string | Date,
+  value: string | Date | null | undefined,
   style: "display" | "input" = "display",
 ): string => {
-  const date = typeof value === "string" ? new Date(value) : value;
-  return style === "display" ? format(date, "dd-MMM-yyyy") : format(date, "yyyy-MM-dd");
+  if (!value) return "—";
+  try {
+    const date = typeof value === "string" ? new Date(value) : value;
+    if (isNaN(date.getTime())) return String(value);
+    return style === "display" ? format(date, "dd-MMM-yyyy") : format(date, "yyyy-MM-dd");
+  } catch {
+    return String(value);
+  }
 };
 
 export const getStatusBadgeProps = (status: string): { label: string; className: string } => {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { KPICard } from "@/components/shared/KPICard";
@@ -9,8 +9,9 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/lib/formatters";
 import { customerService } from "@/services/customerService";
 import { createColumnHelper } from "@tanstack/react-table";
-import { User, Clock, ExternalLink } from "lucide-react";
+import { User, Clock, ExternalLink, Edit2 } from "lucide-react";
 import { format } from "date-fns";
+import { EditPaymentModal } from "./EditPaymentModal";
 
 type TabKey = "ledger" | "invoices" | "payments" | "advances" | "notes";
 
@@ -49,39 +50,66 @@ const dueBadge = (dueInDays: number | null) => {
 export const CustomerDetailPage = () => {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<TabKey>("ledger");
   const [search, setSearch] = useState("");
+  const [editingPayment, setEditingPayment] = useState<any | null>(null);
 
   /* ── ESC: return to ledger tab or customers list ── */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (editingPayment) {
+        setEditingPayment(null);
+        return;
+      }
       if (tab !== "ledger") setTab("ledger");
       else navigate("/customers");
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [tab, navigate]);
+  }, [tab, navigate, editingPayment]);
 
-  const { data: detail, isLoading, isError } = useQuery({
+  const { data: detail, isLoading, isError, refetch: refetchDetail } = useQuery({
     queryKey: ["customer", id],
     queryFn: () => customerService.getById(id),
   });
-  const { data: ledger } = useQuery({
+  const { data: ledger, refetch: refetchLedger } = useQuery({
     queryKey: ["customer-ledger", id],
     queryFn: () => customerService.getLedger(id, {}),
     enabled: Boolean(id),
   });
-  const { data: invoices } = useQuery({
+  const { data: invoices, refetch: refetchInvoices } = useQuery({
     queryKey: ["customer-invoices", id],
     queryFn: () => customerService.getInvoices(id),
     enabled: Boolean(id),
   });
-  const { data: advances } = useQuery({
+  const { data: advances, refetch: refetchAdvances } = useQuery({
     queryKey: ["customer-advances", id],
     queryFn: () => customerService.getAdvances(id),
     enabled: Boolean(id),
   });
+
+  // Check URL params for deep-linked payment editing
+  useEffect(() => {
+    const pmtId = searchParams.get("paymentId") || searchParams.get("editPayment");
+    if (pmtId && ledger?.rows) {
+      const match = ledger.rows.find(
+        (r: any) => String(r.sourceId) === pmtId && (r.type === "Receive Money" || r.payment),
+      );
+      if (match) {
+        setEditingPayment(
+          match.payment || {
+            id: match.sourceId,
+            reference: match.number,
+            amount: match.paid,
+            date: match.issueDate,
+            customerName: detail?.name,
+          },
+        );
+      }
+    }
+  }, [searchParams, ledger, detail]);
 
   const sendStatementMutation = useMutation({
     mutationFn: () => customerService.sendStatement(id),
@@ -204,26 +232,55 @@ export const CustomerDetailPage = () => {
                 {ledgerRows.map((row: any, i: number) => {
                   const isInvoice = row.type === "Invoice";
                   const isCreditNote = row.type === "Sales Credit Note";
+                  const isPayment = row.type === "Receive Money" || Boolean(row.payment);
                   const isOverdue = row.status === "OVERDUE";
+
+                  const handleRowClick = () => {
+                    if (isPayment) {
+                      setEditingPayment(
+                        row.payment || {
+                          id: row.sourceId,
+                          reference: row.number,
+                          amount: row.paid,
+                          date: row.issueDate,
+                          customerName: detail.name,
+                        },
+                      );
+                    } else if (row.sourcePath) {
+                      navigate(row.sourcePath);
+                    }
+                  };
 
                   return (
                     <tr
                       key={i}
-                      className={`border-t border-border/60 transition-colors ${row.sourcePath ? "hover:bg-gold/5 cursor-pointer" : ""} ${isOverdue ? "bg-ruby/5" : ""}`}
-                      onClick={() => row.sourcePath && navigate(row.sourcePath)}
+                      className={`border-t border-border/60 transition-colors hover:bg-gold/5 cursor-pointer ${isOverdue ? "bg-ruby/5" : ""}`}
+                      onClick={handleRowClick}
                     >
                       {/* Type */}
                       <td className="px-4 py-3">
-                        <span className={`font-semibold text-xs ${isCreditNote ? "text-ruby" : isInvoice ? "text-charcoal" : "text-emerald-600"}`}>
+                        <span className={`font-semibold text-xs ${isCreditNote ? "text-ruby" : isInvoice ? "text-charcoal" : row.type === "Journal Entry" ? "text-sapphire font-bold" : "text-emerald-600"}`}>
                           {row.type}
                         </span>
                       </td>
 
                       {/* Number */}
                       <td className="px-4 py-3">
-                        {row.sourcePath ? (
+                        {isPayment ? (
                           <button
-                            className="font-mono text-xs font-semibold text-sapphire underline underline-offset-2 hover:text-sapphire/70"
+                            className="font-mono text-xs font-semibold text-sapphire underline underline-offset-2 hover:text-sapphire/70 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRowClick();
+                            }}
+                            type="button"
+                            title="Click to edit payment"
+                          >
+                            {row.number}
+                          </button>
+                        ) : row.sourcePath ? (
+                          <button
+                            className="font-mono text-xs font-semibold text-sapphire underline underline-offset-2 hover:text-sapphire/70 cursor-pointer"
                             onClick={(e) => { e.stopPropagation(); navigate(row.sourcePath); }}
                             type="button"
                           >
@@ -261,7 +318,7 @@ export const CustomerDetailPage = () => {
                       {/* Due amount */}
                       <td className="px-4 py-3 text-right">
                         <span className={`font-mono text-xs font-semibold ${toN(row.due) < 0 ? "text-ruby" : toN(row.due) > 0 ? "text-amber-600" : "text-muted"}`}>
-                          {toN(row.due) !== 0 ? `(${formatCurrency(Math.abs(toN(row.due)))})` : "—"}
+                          {toN(row.due) < 0 ? `(${formatCurrency(Math.abs(toN(row.due)))})` : toN(row.due) > 0 ? formatCurrency(toN(row.due)) : "—"}
                         </span>
                       </td>
 
@@ -277,11 +334,23 @@ export const CustomerDetailPage = () => {
                         {row.status ? <StatusBadge status={row.status} /> : null}
                       </td>
 
-                      {/* Link icon */}
+                      {/* Action / Link icon */}
                       <td className="px-4 py-3 text-right">
-                        {row.sourcePath && (
+                        {isPayment ? (
+                          <button
+                            type="button"
+                            title="Edit Payment"
+                            className="inline-flex items-center gap-1 rounded p-1 text-muted hover:bg-slate-100 hover:text-sapphire transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRowClick();
+                            }}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : row.sourcePath ? (
                           <ExternalLink className="h-3.5 w-3.5 text-muted hover:text-sapphire cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(row.sourcePath); }} />
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -332,9 +401,9 @@ export const CustomerDetailPage = () => {
               </thead>
               <tbody>
                 {(invoices ?? []).map((inv: any) => (
-                  <tr key={inv.id} className="border-t border-border/60 hover:bg-gold/5 cursor-pointer" onClick={() => navigate(`/invoices/${inv.id}`)}>
+                  <tr key={inv.id} className="border-t border-border/60 hover:bg-gold/5 cursor-pointer" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
                     <td className="px-4 py-3">
-                      <button className="font-mono text-sm font-semibold text-sapphire underline" type="button">{inv.invoiceNo}</button>
+                      <button className="font-mono text-sm font-semibold text-sapphire underline" onClick={(e) => { e.stopPropagation(); navigate(`/invoices/${inv.id}/edit`); }} type="button">{inv.invoiceNo}</button>
                     </td>
                     <td className="px-4 py-3 tabular-nums text-xs">{fmtDate(inv.date)}</td>
                     <td className="px-4 py-3 tabular-nums text-xs">{fmtDate(inv.dueDate)}</td>
@@ -356,23 +425,48 @@ export const CustomerDetailPage = () => {
             <table className="w-full text-sm">
               <thead className="bg-gold/5">
                 <tr>
-                  {["Date","Invoice No","Mode","Reference","Amount"].map((h) => (
+                  {["Date","Invoice No","Mode","Reference","Amount","Action"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-muted">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {payments.map((pmt: any) => (
-                  <tr key={pmt.id} className="border-t border-border/60 hover:bg-gold/5">
+                  <tr
+                    key={pmt.id}
+                    className="border-t border-border/60 hover:bg-gold/5 cursor-pointer"
+                    onClick={() =>
+                      setEditingPayment({
+                        ...pmt,
+                        customerName: detail.name,
+                      })
+                    }
+                  >
                     <td className="px-4 py-3 tabular-nums text-xs">{fmtDate(pmt.date)}</td>
                     <td className="px-4 py-3 font-mono text-xs">{pmt.invoiceNo}</td>
                     <td className="px-4 py-3 text-xs">{pmt.mode}</td>
                     <td className="px-4 py-3 text-xs text-muted">{pmt.reference || "—"}</td>
                     <td className="px-4 py-3 text-right font-mono text-xs font-semibold text-emerald-600">{formatCurrency(pmt.amount)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPayment({
+                            ...pmt,
+                            customerName: detail.name,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1 text-xs text-muted hover:border-gold hover:text-gold transition-colors"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                        Edit
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {payments.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-muted">No payments recorded.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-muted">No payments recorded.</td></tr>
                 )}
               </tbody>
             </table>
@@ -418,6 +512,19 @@ export const CustomerDetailPage = () => {
           <p className="text-sm text-muted">{detail.notes || "No notes available for this customer."}</p>
         </div>
       )}
+
+      {/* ── Edit Payment Modal ───────────────────────────────────────── */}
+      <EditPaymentModal
+        open={Boolean(editingPayment)}
+        payment={editingPayment}
+        onClose={() => setEditingPayment(null)}
+        onSaved={() => {
+          void refetchDetail();
+          void refetchLedger();
+          void refetchInvoices();
+          void refetchAdvances();
+        }}
+      />
     </div>
   );
 };

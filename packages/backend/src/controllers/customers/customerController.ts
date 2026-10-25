@@ -6,6 +6,38 @@ import { getCompanyId, getActor } from "../../lib/requestUtils";
 
 import { customerSchema } from "@jewelledger/shared";
 
+const getCustomerJournalLines = async (companyId: number, customerId: number, customerName: string) => {
+  const arAccounts = await prisma.account.findMany({
+    where: {
+      companyId,
+      OR: [
+        { code: "1100" },
+        { name: { contains: "Receivable", mode: "insensitive" } },
+        { group: { contains: "Receivable", mode: "insensitive" } },
+        { group: { contains: "Debtor", mode: "insensitive" } },
+      ],
+    },
+    select: { id: true },
+  });
+  const arAccountIds = arAccounts.map((a) => a.id);
+  if (arAccountIds.length === 0) return [];
+
+  return prisma.journalLine.findMany({
+    where: {
+      companyId,
+      accountId: { in: arAccountIds },
+      OR: [
+        { narration: { contains: `[Party: ${customerName}`, mode: "insensitive" } },
+        { narration: { contains: `#${customerId}]` } },
+        { narration: { contains: customerName, mode: "insensitive" } },
+      ],
+      entry: { status: { not: "VOID" } },
+    },
+    include: { entry: true },
+    orderBy: { entry: { date: "asc" } },
+  });
+};
+
 export const listCustomers = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
 
@@ -33,14 +65,20 @@ export const listCustomers = async (req: Request, res: Response) => {
 
   const enriched = await Promise.all(
     rows.map(async (row) => {
-      const aggregate = await prisma.invoice.aggregate({
-        where: { companyId, customerId: row.id, status: { not: "VOID" } },
-        _sum: { grandTotal: true, balanceDue: true },
-      });
+      const [aggregate, journalLines] = await Promise.all([
+        prisma.invoice.aggregate({
+          where: { companyId, customerId: row.id, status: { not: "VOID" } },
+          _sum: { grandTotal: true, balanceDue: true },
+        }),
+        getCustomerJournalLines(companyId, row.id, row.name),
+      ]);
+      const netJournalDue = journalLines.reduce((sum, jl) => {
+        return sum + (Number(jl.debit) - Number(jl.credit));
+      }, 0);
       return {
         ...row,
         totalBusiness: Number(aggregate._sum?.grandTotal || 0),
-        outstanding: Number(aggregate._sum?.balanceDue || 0),
+        outstanding: Math.max(0, Number(aggregate._sum?.balanceDue || 0) + netJournalDue),
       };
     }),
   );
@@ -56,20 +94,27 @@ export const getCustomerById = async (req: Request, res: Response) => {
   
   if (!row) return fail(res, 404, "CUSTOMER_NOT_FOUND", "Customer not found");
 
-  const invoiceAggregate = await prisma.invoice.aggregate({
-    where: { companyId, customerId: row.id, status: { not: "VOID" } },
-    _sum: { grandTotal: true, balanceDue: true },
-  });
-  const advanceAggregate = await prisma.payment.aggregate({
-    where: {
-      companyId,
-      customerId: row.id,
-      type: { in: ["ADVANCE_RECEIPT", "ADVANCE_ADJUSTMENT"] },
-    },
-    _sum: { amount: true },
-  });
+  const [invoiceAggregate, advanceAggregate, journalLines] = await Promise.all([
+    prisma.invoice.aggregate({
+      where: { companyId, customerId: row.id, status: { not: "VOID" } },
+      _sum: { grandTotal: true, balanceDue: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        companyId,
+        customerId: row.id,
+        type: { in: ["ADVANCE_RECEIPT", "ADVANCE_ADJUSTMENT"] },
+      },
+      _sum: { amount: true },
+    }),
+    getCustomerJournalLines(companyId, row.id, row.name),
+  ]);
 
-  const outstanding = Number(invoiceAggregate._sum?.balanceDue || 0);
+  const netJournalDue = journalLines.reduce((sum, jl) => {
+    return sum + (Number(jl.debit) - Number(jl.credit));
+  }, 0);
+
+  const outstanding = Math.max(0, Number(invoiceAggregate._sum?.balanceDue || 0) + netJournalDue);
   const creditLimit = Number(row.creditLimit || 0);
 
   return ok(res, {
@@ -93,7 +138,7 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
   today.setHours(0, 0, 0, 0);
 
   /* ── Fetch all documents ── */
-  const [invoices, creditNotes, standalonePayments] = await Promise.all([
+  const [invoices, creditNotes, standalonePayments, journalLines] = await Promise.all([
     prisma.invoice.findMany({
       where: { customerId: customer.id, companyId, status: { not: "VOID" } },
       include: { payments: { orderBy: { date: "asc" } } },
@@ -107,6 +152,7 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
       where: { companyId, customerId: customer.id, invoiceId: null, type: { in: ["ADVANCE_RECEIPT", "RECEIPT"] } },
       orderBy: { date: "asc" },
     }),
+    getCustomerJournalLines(companyId, customer.id, customer.name),
   ]);
 
   /* ── Build rows ── */
@@ -168,7 +214,7 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
       total: Number(inv.grandTotal),
       status,
       sourceId: inv.id,
-      sourcePath: `/invoices/${inv.id}`,
+      sourcePath: `/invoices/${inv.id}/edit`,
     });
 
     // Inline receipt rows for each payment
@@ -186,7 +232,18 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
         total: Number(pmt.amount),
         status: "PAID",
         sourceId: pmt.id,
-        sourcePath: null,
+        sourcePath: `/customers/${customer.id}?paymentId=${pmt.id}`,
+        payment: {
+          id: pmt.id,
+          date: pmt.date ? new Date(pmt.date).toISOString().slice(0, 10) : "",
+          mode: pmt.mode,
+          amount: Number(pmt.amount),
+          reference: pmt.reference || "",
+          notes: pmt.notes || "",
+          invoiceId: inv.id,
+          invoiceNo: inv.invoiceNo,
+          customerName: customer.name,
+        },
       });
     }
   }
@@ -225,7 +282,51 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
       total: Number(pmt.amount),
       status: "PAID",
       sourceId: pmt.id,
-      sourcePath: null,
+      sourcePath: `/customers/${customer.id}?paymentId=${pmt.id}`,
+      payment: {
+        id: pmt.id,
+        date: pmt.date ? new Date(pmt.date).toISOString().slice(0, 10) : "",
+        mode: pmt.mode,
+        amount: Number(pmt.amount),
+        reference: pmt.reference || "",
+        notes: pmt.notes || "",
+        invoiceId: null,
+        invoiceNo: null,
+        customerName: customer.name,
+      },
+    });
+  }
+
+  // Journal entries touching Accounts Receivable for this customer
+  for (const jLine of journalLines) {
+    const isDebit = Number(jLine.debit) > 0;
+    const amount = isDebit ? Number(jLine.debit) : Number(jLine.credit);
+
+    let cleanRemark = jLine.narration || "";
+    cleanRemark = cleanRemark.replace(/^\[Party:\s*.*?\]\s*/, "").replace(/^Party:\s*.*?\s*/, "").trim();
+    if (!cleanRemark) {
+      cleanRemark = jLine.entry.narration || "Journal Adjustment";
+    }
+
+    rows.push({
+      type: "Journal Entry",
+      number: jLine.entry.entryNo,
+      reference: cleanRemark,
+      issueDate: jLine.entry.date,
+      date: jLine.entry.date ? new Date(jLine.entry.date).toISOString().slice(0, 10) : "",
+      dueDate: null,
+      dueInDays: null,
+      paidDate: null,
+      paid: isDebit ? 0 : amount,
+      due: isDebit ? amount : -amount,
+      total: isDebit ? amount : -amount,
+      debit: isDebit ? amount : 0,
+      credit: isDebit ? 0 : amount,
+      refNo: jLine.entry.entryNo,
+      narration: cleanRemark,
+      status: jLine.entry.status,
+      sourceId: jLine.entry.id,
+      sourcePath: `/journal/${jLine.entry.id}/edit`,
     });
   }
 
@@ -241,9 +342,17 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
       runningBalance = Number((runningBalance - row.paid).toFixed(2));
     } else if (row.type === "Sales Credit Note") {
       runningBalance = Number((runningBalance + row.total).toFixed(2)); // total is already negative
+    } else if (row.type === "Journal Entry") {
+      runningBalance = Number((runningBalance + row.total).toFixed(2));
     }
     return { ...row, runningBalance };
   });
+
+  const netJournalDue = journalLines.reduce((sum, jl) => {
+    return sum + (Number(jl.debit) - Number(jl.credit));
+  }, 0);
+
+  const totalOutstanding = Math.max(0, invoices.reduce((s, i) => s + Number(i.balanceDue), 0) + netJournalDue);
 
   return ok(res, {
     openingBalance: Number(customer.openingBalance),
@@ -251,7 +360,7 @@ export const getCustomerLedger = async (req: Request, res: Response) => {
     closingBalance: runningBalance,
     totalInvoiced: invoices.reduce((s, i) => s + Number(i.grandTotal), 0),
     totalPaid: invoices.reduce((s, i) => s + Number(i.paidAmount), 0),
-    totalOutstanding: invoices.reduce((s, i) => s + Number(i.balanceDue), 0),
+    totalOutstanding,
   });
 };
 

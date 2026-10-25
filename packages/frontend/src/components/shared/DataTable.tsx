@@ -80,7 +80,7 @@ export const DataTable = <TData,>({ columns, data, loading = false, onRowClick }
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-border/60 hover:bg-slate-50"
+                  className={`border-b border-border/60 transition-colors ${onRowClick ? "cursor-pointer hover:bg-gold-tint/20 group" : "hover:bg-slate-50"}`}
                   onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (

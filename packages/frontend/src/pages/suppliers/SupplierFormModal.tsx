@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Ban, CheckCircle2 } from "lucide-react";
 import { supplierService } from "@/services/supplierService";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 
 const supplierSchema = z.object({
   code: z.string().min(1),
@@ -30,7 +32,10 @@ interface SupplierFormModalProps {
 
 export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: SupplierFormModalProps) => {
   const [tab, setTab] = useState<"basic" | "financial" | "tax" | "notes">("basic");
+  const [isDeactivating, setIsDeactivating] = useState(false);
   const editing = Boolean(initialData?.id);
+  const isInactive = initialData?.status === "INACTIVE";
+
   const form = useForm<SupplierInput>({
     resolver: zodResolver(supplierSchema),
     defaultValues: {
@@ -73,12 +78,46 @@ export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: Suppl
     onError: () => toast.error("Unable to save supplier"),
   });
 
+  const handleDeactivate = async () => {
+    if (!window.confirm("Are you sure you want to deactivate this supplier?")) return;
+    try {
+      setIsDeactivating(true);
+      await supplierService.remove(initialData!.id);
+      toast.success("Supplier deactivated successfully");
+      onSaved();
+      onClose();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to deactivate supplier");
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
+  const handleActivate = async () => {
+    try {
+      setIsDeactivating(true);
+      await supplierService.update(initialData!.id, { status: "ACTIVE" });
+      toast.success("Supplier activated successfully");
+      onSaved();
+      onClose();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to activate supplier");
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-charcoal/60 p-4" onClick={(event) => event.currentTarget === event.target && onClose()}>
       <form className="w-full max-w-3xl rounded-card bg-card p-6 shadow-modal" onSubmit={form.handleSubmit((values) => mutation.mutate(values))}>
-        <h3 className="mb-4 font-display text-2xl font-semibold text-charcoal">{editing ? "Edit Supplier" : "Add Supplier"}</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h3 className="font-display text-2xl font-semibold text-charcoal">{editing ? "Edit Supplier" : "Add Supplier"}</h3>
+            {editing && initialData?.status && <StatusBadge status={initialData.status} />}
+          </div>
+        </div>
         <div className="mb-4 flex gap-2">
           <button className={`rounded-full px-3 py-1 text-xs ${tab === "basic" ? "bg-gold text-white" : "bg-slate-100"}`} onClick={() => setTab("basic")} type="button">Basic Info</button>
           <button className={`rounded-full px-3 py-1 text-xs ${tab === "financial" ? "bg-gold text-white" : "bg-slate-100"}`} onClick={() => setTab("financial")} type="button">Financial</button>
@@ -115,11 +154,37 @@ export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: Suppl
         )}
 
         <div className="mt-2 text-xs text-ruby">{Object.values(form.formState.errors)[0]?.message as string}</div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={onClose} type="button">Cancel</button>
-          <button className="h-10 rounded-btn bg-gold px-4 text-sm text-white disabled:opacity-50" disabled={mutation.isPending} type="submit">
-            {editing ? "Update Supplier" : "Create Supplier"}
-          </button>
+        <div className="mt-5 flex items-center justify-between border-t border-border pt-4">
+          <div>
+            {editing && !isInactive && (
+              <button
+                className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-ruby/40 text-ruby px-4 text-xs font-semibold hover:bg-ruby/5 transition-colors"
+                onClick={handleDeactivate}
+                disabled={isDeactivating}
+                type="button"
+              >
+                <Ban className="h-3.5 w-3.5" />
+                {isDeactivating ? "Deactivating…" : "Deactivate Supplier"}
+              </button>
+            )}
+            {editing && isInactive && (
+              <button
+                className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-emerald/40 text-emerald px-4 text-xs font-semibold hover:bg-emerald/5 transition-colors"
+                onClick={handleActivate}
+                disabled={isDeactivating}
+                type="button"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {isDeactivating ? "Activating…" : "Activate Supplier"}
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={onClose} type="button">Cancel</button>
+            <button className="h-10 rounded-btn bg-gold px-5 text-sm font-bold text-white shadow hover:bg-gold-dark transition-all disabled:opacity-50" disabled={mutation.isPending} type="submit">
+              {editing ? "Update Supplier" : "Create Supplier"}
+            </button>
+          </div>
         </div>
       </form>
     </div>

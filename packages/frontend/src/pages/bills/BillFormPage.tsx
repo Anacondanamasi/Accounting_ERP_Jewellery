@@ -1,41 +1,44 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
-import { useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Trash2, Copy, Send, CreditCard, Ban, Save, Check } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/lib/formatters";
 import { billService } from "@/services/billService";
 import { useInvoiceCalc } from "@/hooks/useInvoiceCalc";
 import { supplierService } from "@/services/supplierService";
 import { productServiceService } from "@/services/productServiceService";
+import { RecordBillPaymentModal } from "@/pages/bills/RecordBillPaymentModal";
+import { LinkedSettlementsPanel } from "@/components/shared/LinkedSettlementsPanel";
 
 const lineSchema = z.object({
-  sku: z.string().optional().default(""),
+  sku: z.string().optional().nullable().default(""),
   description: z.string().min(1, "Description is required"),
-  karat: z.enum(["24K", "22K", "18K", "14K", "SILVER", "PLATINUM"]),
-  grossWt: z.coerce.number().multipleOf(0.001).nonnegative(),
-  netWt: z.coerce.number().multipleOf(0.001).nonnegative(),
-  stoneWt: z.coerce.number().multipleOf(0.001).nonnegative(),
-  makingType: z.enum(["PER_GRAM", "FLAT", "PERCENT", "FIXED"]),
-  makingRate: z.coerce.number().multipleOf(0.01).nonnegative(),
-  ratePerGram: z.coerce.number().multipleOf(0.01).nonnegative(),
-  discountPct: z.coerce.number().min(0).max(100),
-  gstPct: z.coerce.number().min(0).max(28),
+  karat: z.string().min(1).default("22K"),
+  grossWt: z.coerce.number().nonnegative(),
+  netWt: z.coerce.number().nonnegative(),
+  stoneWt: z.coerce.number().nonnegative().optional().default(0),
+  makingType: z.string().optional().default("PER_GRAM"),
+  makingRate: z.coerce.number().nonnegative().optional().default(0),
+  ratePerGram: z.coerce.number().nonnegative(),
+  discountPct: z.coerce.number().min(0).max(100).optional().default(0),
+  gstPct: z.coerce.number().min(0).max(28).default(3),
   hsnCode: z.string().optional().default("7113"),
 });
 
 const billSchema = z.object({
-  billDate: z.string().min(1),
-  dueDate: z.string().min(1),
-  supplierId: z.coerce.number(),
-  supplierName: z.string().min(1),
-  qualityCertUrl: z.string().optional(),
-  lines: z.array(lineSchema).min(1),
+  billDate: z.string().min(1, "Bill date is required"),
+  dueDate: z.string().min(1, "Due date is required"),
+  supplierId: z.coerce.number().min(1, "Supplier is required"),
+  supplierName: z.string().optional().nullable().default(""),
+  qualityCertUrl: z.string().optional().nullable().default(""),
+  lines: z.array(lineSchema).min(1, "At least one line item is required"),
 });
 
 type BillInput = z.infer<typeof billSchema>;
@@ -57,8 +60,10 @@ const defaultLine: BillInput["lines"][number] = {
 
 export const BillFormPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { id } = useParams();
   const editing = Boolean(id);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
   const form = useForm<BillInput>({
     resolver: zodResolver(billSchema),
@@ -80,9 +85,10 @@ export const BillFormPage = () => {
   const { data: nextNo } = useQuery({
     queryKey: ["bill-next-number"],
     queryFn: billService.getNextNumber,
+    enabled: !editing,
   });
 
-  const { data: existing } = useQuery({
+  const { data: existing, refetch: refetchExisting } = useQuery({
     queryKey: ["bill", id],
     queryFn: () => billService.getById(id!),
     enabled: editing,
@@ -93,7 +99,6 @@ export const BillFormPage = () => {
     queryFn: () => supplierService.list({}),
   });
 
-  // Fetch active Products & Services for the dropdown
   const { data: productsData } = useQuery({
     queryKey: ["product-services-for-bill"],
     queryFn: () => productServiceService.list({ status: "ACTIVE", limit: 500 }),
@@ -102,20 +107,45 @@ export const BillFormPage = () => {
 
   useEffect(() => {
     if (!existing || !editing) return;
+    const rawBillDate = existing.billDate || existing.date;
+    const billDate = rawBillDate
+      ? new Date(rawBillDate).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const rawDueDate = existing.dueDate;
+    const dueDate = rawDueDate
+      ? new Date(rawDueDate).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const supplierName = existing.supplierName || existing.supplier?.name || "";
+
     form.reset({
-      billDate: existing.billDate,
-      dueDate: existing.dueDate,
-      supplierId: existing.supplierId,
-      supplierName: existing.supplierName,
+      billDate,
+      dueDate,
+      supplierId: Number(existing.supplierId) || 0,
+      supplierName,
       qualityCertUrl: existing.qualityCertUrl ?? "",
-      lines: existing.lines,
+      lines:
+        existing.lines && existing.lines.length > 0
+          ? existing.lines.map((l: any) => ({
+              sku: l.sku || "",
+              description: l.description || "",
+              karat: l.karat || "22K",
+              grossWt: Number(l.grossWt) || 0,
+              netWt: Number(l.netWt) || 0,
+              stoneWt: Number(l.stoneWt) || 0,
+              makingType: l.makingType || "PER_GRAM",
+              makingRate: Number(l.makingRate) || 0,
+              ratePerGram: Number(l.ratePerGram) || 0,
+              discountPct: Number(l.discountPct) || 0,
+              gstPct: Number(l.gstPct) ?? 3,
+              hsnCode: l.hsnCode || "7113",
+            }))
+          : [defaultLine],
     });
   }, [editing, existing, form]);
 
   const lineValues = useWatch({ control: form.control, name: "lines" });
   const totals = useInvoiceCalc((lineValues as any) || []);
 
-  // Track which product is selected per line (by product id stored in a parallel state)
   const handleProductSelect = (index: number, productId: number) => {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
@@ -126,73 +156,186 @@ export const BillFormPage = () => {
     form.setValue(`lines.${index}.hsnCode`, "7113");
   };
 
-  const saveMutation = useMutation({
-    mutationFn: (payload: BillInput) => (editing ? billService.update(id!, payload) : billService.create(payload)),
+  const saveDraftMutation = useMutation({
+    mutationFn: (payload: BillInput) =>
+      editing ? billService.update(Number(id), payload) : billService.create(payload),
     onSuccess: (record) => {
-      toast.success(editing ? "Bill updated" : "Bill created");
-      navigate(`/bills/${record.id}`);
+      toast.success(editing ? "Bill saved successfully" : "Bill draft created");
+      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      if (!editing && record?.id) {
+        navigate(`/bills/${record.id}/edit`);
+      } else {
+        void refetchExisting();
+      }
     },
     onError: (error: any) => {
-      console.error("Save Bill Error:", error);
-      toast.error(error.userMessage || "Unable to save bill");
+      console.error("Save Draft Error:", error);
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to save bill draft");
+    },
+  });
+
+  const saveAndCloseMutation = useMutation({
+    mutationFn: (payload: BillInput) =>
+      editing ? billService.update(Number(id), payload) : billService.create(payload),
+    onSuccess: () => {
+      toast.success("Bill saved successfully");
+      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      navigate("/bills");
+    },
+    onError: (error: any) => {
+      console.error("Save & Close Error:", error);
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to save bill");
+    },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: () => billService.duplicate(Number(id)),
+    onSuccess: (record) => {
+      toast.success("Bill duplicated successfully");
+      navigate(`/bills/${record.id}/edit`);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to duplicate bill");
     },
   });
 
   const postMutation = useMutation({
-    mutationFn: async (payload: BillInput) => {
-      const record = editing ? await billService.update(id!, payload) : await billService.create(payload);
-      return billService.post(record.id);
-    },
-    onSuccess: (record) => {
-      toast.success("Bill posted");
-      navigate(`/bills/${record.id}`);
+    mutationFn: () => billService.post(Number(id)),
+    onSuccess: () => {
+      toast.success("Bill posted successfully");
+      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      void refetchExisting();
     },
     onError: (error: any) => {
-      console.error("Post Bill Error:", error);
-      toast.error(error.userMessage || "Unable to post bill");
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to post bill");
+    },
+  });
+
+  const voidMutation = useMutation({
+    mutationFn: () => billService.void(Number(id)),
+    onSuccess: () => {
+      toast.success("Bill voided successfully");
+      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      navigate("/bills");
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to void bill");
     },
   });
 
   const onInvalid = (errors: any) => {
     console.error("Form Errors:", errors);
     if (errors.lines) {
-      toast.error("Please check your line items for errors.");
+      toast.error("Please check your line items for required fields.");
+    } else if (errors.supplierId) {
+      toast.error("Please select a valid supplier.");
     } else {
       toast.error("Please fill in all required fields.");
     }
   };
 
+  const isBusy =
+    saveDraftMutation.isPending ||
+    saveAndCloseMutation.isPending ||
+    duplicateMutation.isPending ||
+    postMutation.isPending ||
+    voidMutation.isPending;
+
   return (
     <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
       <PageHeader
-        title={editing ? "Edit Purchase Bill" : "New Purchase Bill"}
+        title={
+          <div className="flex items-center gap-3">
+            <span>{editing ? "Edit Purchase Bill" : "New Purchase Bill"}</span>
+            {editing && existing?.status && <StatusBadge status={existing.status} />}
+          </div>
+        }
         subtitle={`Bill No: ${existing?.billNo ?? nextNo?.billNo ?? "Auto-generated"}`}
         actions={
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               className="h-10 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
               onClick={() => navigate("/bills")}
               type="button"
+              disabled={isBusy}
             >
               Cancel
             </button>
+
+            {editing && (
+              <>
+                <button
+                  className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
+                  onClick={() => duplicateMutation.mutate()}
+                  type="button"
+                  disabled={isBusy}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
+                </button>
+
+                {existing?.status === "DRAFT" && (
+                  <button
+                    className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
+                    onClick={() => postMutation.mutate()}
+                    type="button"
+                    disabled={isBusy}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    Post
+                  </button>
+                )}
+
+                {Number(existing?.balanceDue) > 0 && existing?.status !== "VOID" && (
+                  <button
+                    className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors text-emerald-700"
+                    onClick={() => setPaymentModalOpen(true)}
+                    type="button"
+                    disabled={isBusy}
+                  >
+                    <CreditCard className="h-3.5 w-3.5" />
+                    Record Payment
+                  </button>
+                )}
+
+                {existing?.status !== "VOID" && (
+                  <button
+                    className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-ruby/40 text-ruby px-4 text-sm font-medium hover:bg-ruby/5 transition-colors"
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to void this purchase bill?")) {
+                        voidMutation.mutate();
+                      }
+                    }}
+                    type="button"
+                    disabled={isBusy}
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                    Void
+                  </button>
+                )}
+              </>
+            )}
+
             <button
-              className="h-10 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
-              onClick={form.handleSubmit((v) => saveMutation.mutate(v), onInvalid)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
+              onClick={form.handleSubmit((v) => saveDraftMutation.mutate(v), onInvalid)}
               type="button"
-              disabled={saveMutation.isPending}
+              disabled={isBusy}
             >
+              <Save className="h-3.5 w-3.5" />
               Save Draft
             </button>
+
             <button
-              className="h-10 rounded-btn bg-gold px-5 text-sm font-bold text-white shadow-lg hover:bg-gold-dark transition-all disabled:opacity-50"
-              onClick={form.handleSubmit((v) => postMutation.mutate(v), onInvalid)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-btn bg-gold px-5 text-sm font-bold text-white shadow-lg hover:bg-gold-dark transition-all disabled:opacity-50"
+              onClick={form.handleSubmit((v) => saveAndCloseMutation.mutate(v), onInvalid)}
               type="button"
-              disabled={postMutation.isPending}
+              disabled={isBusy}
             >
-              {postMutation.isPending ? "Posting…" : "Save & Post"}
+              <Check className="h-4 w-4" />
+              {saveAndCloseMutation.isPending ? "Saving…" : "Save & Close"}
             </button>
-          </>
+          </div>
         }
       />
 
@@ -206,6 +349,9 @@ export const BillFormPage = () => {
               type="date"
               {...form.register("billDate")}
             />
+            {form.formState.errors.billDate && (
+              <p className="mt-1 text-[10px] text-ruby">{form.formState.errors.billDate.message}</p>
+            )}
           </div>
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted">Due Date</label>
@@ -214,13 +360,16 @@ export const BillFormPage = () => {
               type="date"
               {...form.register("dueDate")}
             />
+            {form.formState.errors.dueDate && (
+              <p className="mt-1 text-[10px] text-ruby">{form.formState.errors.dueDate.message}</p>
+            )}
           </div>
           <div className="md:col-span-2">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Supplier</p>
             <SearchableSelect
               onChange={(value) => {
                 const supplier = (suppliers ?? []).find((row: any) => row.id === value);
-                form.setValue("supplierId", value, { shouldValidate: true });
+                form.setValue("supplierId", Number(value), { shouldValidate: true });
                 form.setValue("supplierName", supplier?.name ?? "");
               }}
               options={(suppliers ?? []).map((supplier: any) => ({
@@ -399,9 +548,89 @@ export const BillFormPage = () => {
               <span>Grand Total</span>
               <span className="font-mono text-gold">{formatCurrency(totals.grandTotal)}</span>
             </div>
+            {editing && existing && (
+              <>
+                <div className="flex justify-between text-xs text-muted">
+                  <span>Paid Amount</span>
+                  <span className="font-mono font-semibold text-emerald-600">
+                    {formatCurrency(existing.paidAmount || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs font-semibold text-ruby">
+                  <span>Balance Due</span>
+                  <span className="font-mono">{formatCurrency(existing.balanceDue || 0)}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </form>
+
+      {/* ── Payment History ────────────────────────────────────────── */}
+      {editing && existing?.payments && existing.payments.length > 0 && (
+        <div className="rounded-card border-t-2 border-t-gold-light bg-card p-6 shadow-card">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-display text-lg font-semibold text-charcoal">Payment History</h3>
+            <span className="font-mono text-xs font-semibold text-emerald-600">
+              Total Paid: {formatCurrency(existing.paidAmount || 0)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gold/5 text-left text-xs font-semibold text-muted">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Mode</th>
+                  <th className="px-4 py-2">Reference</th>
+                  <th className="px-4 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {existing.payments.map((p: any) => (
+                  <tr key={p.id} className="border-t border-border/60">
+                    <td className="px-4 py-2 text-xs">
+                      {p.date ? new Date(p.date).toLocaleDateString("en-IN") : "—"}
+                    </td>
+                    <td className="px-4 py-2 text-xs">{p.mode}</td>
+                    <td className="px-4 py-2 text-xs text-muted">{p.reference || "—"}</td>
+                    <td className="px-4 py-2 text-right font-mono text-xs font-semibold text-emerald-600">
+                      {formatCurrency(p.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Linked Settlements ──────────────────────────────────────── */}
+      {editing && existing && (
+        <LinkedSettlementsPanel
+          targetType="bill"
+          targetId={existing.id}
+          grandTotal={existing.grandTotal}
+          partyId={existing.supplierId}
+          partyName={existing.supplierName ?? existing.supplier?.name ?? "Supplier"}
+          status={existing.status}
+          onSettled={() => void refetchExisting()}
+        />
+      )}
+
+      {/* ── Record Payment Modal ─────────────────────────────────────── */}
+      {editing && existing && (
+        <RecordBillPaymentModal
+          open={paymentModalOpen}
+          billId={Number(id)}
+          billNo={existing.billNo}
+          balanceDue={Number(existing.balanceDue || 0)}
+          onClose={() => setPaymentModalOpen(false)}
+          onSaved={() => {
+            void refetchExisting();
+            queryClient.invalidateQueries({ queryKey: ["bills"] });
+          }}
+        />
+      )}
     </div>
   );
 };

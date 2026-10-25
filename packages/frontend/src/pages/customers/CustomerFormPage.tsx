@@ -4,18 +4,21 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { customerSchema, type CustomerInput } from "@jewelledger/shared";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Building2, User } from "lucide-react";
+import { ArrowLeft, Save, Building2, User, Ban, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/axios";
+import { customerService } from "@/services/customerService";
 
 export const CustomerFormPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = Boolean(id);
   const [activeTab, setActiveTab] = useState("other");
+  const [customerStatus, setCustomerStatus] = useState<string>("ACTIVE");
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   const {
     register,
@@ -45,6 +48,7 @@ export const CustomerFormPage = () => {
           const { data } = await api.get(`/customers/${id}`);
           if (data.success) {
             reset(data.data);
+            setCustomerStatus(data.data.status || "ACTIVE");
           }
         } catch (error) {
           toast.error("Failed to fetch customer data");
@@ -53,6 +57,34 @@ export const CustomerFormPage = () => {
       fetchCustomer();
     }
   }, [id, isEditing, reset]);
+
+  const handleDeactivate = async () => {
+    if (!window.confirm("Are you sure you want to deactivate this customer?")) return;
+    try {
+      setIsDeactivating(true);
+      await customerService.remove(Number(id));
+      setCustomerStatus("INACTIVE");
+      toast.success("Customer deactivated successfully");
+      navigate("/customers");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to deactivate customer");
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
+  const handleActivate = async () => {
+    try {
+      setIsDeactivating(true);
+      await customerService.update(Number(id), { status: "ACTIVE" });
+      setCustomerStatus("ACTIVE");
+      toast.success("Customer activated successfully");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Failed to activate customer");
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
 
   const customerType = watch("type");
 
@@ -90,10 +122,48 @@ export const CustomerFormPage = () => {
           >
             <ArrowLeft className="h-5 w-5 text-muted" />
           </button>
-          <h1 className="text-xl font-semibold text-charcoal">
-            {isEditing ? "Edit Customer" : "New Customer"}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-charcoal">
+              {isEditing ? "Edit Customer" : "New Customer"}
+            </h1>
+            {isEditing && (
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  customerStatus === "ACTIVE"
+                    ? "bg-emerald/10 text-emerald border border-emerald/20"
+                    : "bg-slate-200 text-slate-600 border border-slate-300"
+                }`}
+              >
+                {customerStatus}
+              </span>
+            )}
+          </div>
         </div>
+        {isEditing && (
+          <div>
+            {customerStatus === "ACTIVE" ? (
+              <button
+                type="button"
+                onClick={handleDeactivate}
+                disabled={isDeactivating}
+                className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-ruby/40 text-ruby px-4 text-xs font-medium hover:bg-ruby/5 transition-colors"
+              >
+                <Ban className="h-3.5 w-3.5" />
+                {isDeactivating ? "Deactivating…" : "Deactivate Customer"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleActivate}
+                disabled={isDeactivating}
+                className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-emerald/40 text-emerald px-4 text-xs font-medium hover:bg-emerald/5 transition-colors"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {isDeactivating ? "Activating…" : "Activate Customer"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
@@ -337,14 +407,39 @@ export const CustomerFormPage = () => {
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center gap-4 pt-4 pb-12">
-            <Button type="submit" loading={isSubmitting}>
-              <Save className="mr-2 h-4 w-4" />
-              Save
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => navigate("/customers")}>
-              Cancel
-            </Button>
+          <div className="flex items-center justify-between pt-4 pb-12">
+            <div className="flex items-center gap-4">
+              <Button type="submit" loading={isSubmitting}>
+                <Save className="mr-2 h-4 w-4" />
+                Save Customer
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => navigate("/customers")}>
+                Cancel
+              </Button>
+            </div>
+            {isEditing && customerStatus === "ACTIVE" && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDeactivate}
+                disabled={isDeactivating}
+              >
+                <Ban className="mr-1.5 h-4 w-4" />
+                {isDeactivating ? "Deactivating…" : "Deactivate Customer"}
+              </Button>
+            )}
+            {isEditing && customerStatus === "INACTIVE" && (
+              <Button
+                type="button"
+                className="border-emerald/40 text-emerald hover:bg-emerald/5"
+                variant="outline"
+                onClick={handleActivate}
+                disabled={isDeactivating}
+              >
+                <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                {isDeactivating ? "Activating…" : "Activate Customer"}
+              </Button>
+            )}
           </div>
         </form>
       </div>

@@ -91,8 +91,8 @@ export const SupplierListPage = () => {
       />
       <DataTable
         columns={[
-          col.accessor("code", { header: "Code", cell: (info) => <span className="font-mono">{info.getValue()}</span> }),
-          col.accessor("name", { header: "Supplier Name" }),
+          col.accessor("code", { header: "Code", cell: (info) => <span className="font-mono font-medium text-sapphire">{info.getValue()}</span> }),
+          col.accessor("name", { header: "Supplier Name", cell: (info) => <span className="font-medium text-charcoal">{info.getValue()}</span> }),
           col.accessor("mobile", { header: "Mobile" }),
           col.accessor("gstin", { header: "GSTIN", cell: (info) => info.getValue() || "-" }),
           col.accessor("city", { header: "City" }),
@@ -107,17 +107,6 @@ export const SupplierListPage = () => {
           }),
           col.accessor("lastBill", { header: "Last Bill", cell: (info) => info.getValue() || "-" }),
           col.accessor("status", { header: "Status", cell: (info) => <StatusBadge status={info.getValue()} /> }),
-          col.display({
-            id: "actions",
-            header: "Actions",
-            cell: ({ row }) => (
-              <div className="flex gap-2">
-                <button className="rounded border border-border px-2 py-1 text-xs" onClick={() => navigate(`/suppliers/${row.original.id}`)} type="button">View</button>
-                <button className="rounded border border-border px-2 py-1 text-xs" onClick={() => { setEditRow(row.original); setModalOpen(true); }} type="button">Edit</button>
-                <button className="rounded border border-ruby px-2 py-1 text-xs text-ruby" onClick={() => deleteMutation.mutate(row.original.id)} type="button">Deactivate</button>
-              </div>
-            ),
-          }),
         ]}
         data={rows}
         loading={isLoading}

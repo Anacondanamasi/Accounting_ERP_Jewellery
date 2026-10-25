@@ -7,9 +7,22 @@ import { getCompanyId, getActor } from "../../lib/requestUtils";
 const lineSchema = z.object({
   accountId: z.coerce.number(),
   drCr: z.enum(["DR", "CR"]),
-  amount: z.coerce.number().multipleOf(0.01).positive(),
+  amount: z.coerce.number().positive(),
   narration: z.string().optional(),
+  partyName: z.string().optional().nullable().default(""),
 });
+
+const formatLineNarration = (line: z.infer<typeof lineSchema>) => {
+  const party = (line.partyName || "").trim();
+  const remark = (line.narration || "").trim();
+  if (party && remark) {
+    return `[Party: ${party}] ${remark}`;
+  }
+  if (party) {
+    return `Party: ${party}`;
+  }
+  return remark || undefined;
+};
 
 
 const journalSchema = z.object({
@@ -67,8 +80,35 @@ export const getJournalEntryById = async (req: Request, res: Response) => {
   });
   
   if (!entry) return fail(res, 404, "JOURNAL_NOT_FOUND", "Journal entry not found");
-  
-  return ok(res, entry);
+
+  const formattedDate = entry.date ? new Date(entry.date).toISOString().slice(0, 10) : "";
+
+  const lines = entry.lines.map((line) => {
+    let partyName = "";
+    let cleanNarration = line.narration ?? "";
+    const match1 = cleanNarration.match(/^\[Party:\s*(.*?)\]\s*(.*)$/);
+    if (match1) {
+      partyName = match1[1];
+      cleanNarration = match1[2];
+    } else {
+      const match2 = cleanNarration.match(/^Party:\s*(.*?)$/);
+      if (match2) {
+        partyName = match2[1];
+        cleanNarration = "";
+      }
+    }
+    return {
+      ...line,
+      partyName,
+      narration: cleanNarration,
+    };
+  });
+
+  return ok(res, {
+    ...entry,
+    date: formattedDate,
+    lines,
+  });
 };
 
 export const createJournalEntry = async (req: Request, res: Response) => {
@@ -101,7 +141,7 @@ export const createJournalEntry = async (req: Request, res: Response) => {
           accountId: line.accountId,
           debit: line.drCr === "DR" ? line.amount : 0,
           credit: line.drCr === "CR" ? line.amount : 0,
-          narration: line.narration,
+          narration: formatLineNarration(line),
           createdBy: getActor(req),
         })),
       },
@@ -146,7 +186,7 @@ export const updateJournalEntry = async (req: Request, res: Response) => {
               accountId: line.accountId,
               debit: line.drCr === "DR" ? line.amount : 0,
               credit: line.drCr === "CR" ? line.amount : 0,
-              narration: line.narration,
+              narration: formatLineNarration(line),
               createdBy: getActor(req),
             })),
           },

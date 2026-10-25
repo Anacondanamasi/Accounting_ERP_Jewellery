@@ -162,7 +162,13 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     include: invoiceInclude,
   });
   if (!invoice) return fail(res, 404, "INVOICE_NOT_FOUND", "Invoice not found");
-  return ok(res, invoice);
+  
+  const mappedInvoice = {
+    ...invoice,
+    invoiceDate: invoice.date ? new Date(invoice.date).toISOString().slice(0, 10) : null,
+    dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().slice(0, 10) : null,
+  };
+  return ok(res, mappedInvoice);
 };
 
 export const createInvoice = async (req: Request, res: Response) => {
@@ -224,13 +230,26 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
   const existing = await prisma.invoice.findFirst({ where: { id: Number(req.params.id), companyId } });
   if (!existing) return fail(res, 404, "INVOICE_NOT_FOUND", "Invoice not found");
-  if (existing.status !== "DRAFT") {
-    return fail(res, 400, "INVALID_STATUS", "Only draft invoices can be updated");
+  if (existing.status === "VOID") {
+    return fail(res, 400, "INVALID_STATUS", "Void invoices cannot be updated");
   }
 
   const { lines, ...header } = parsed.data;
   const { totals, creates } = await lineCreates(companyId, getActor(req), lines as any);
   const tax = splitGst(totals.taxTotal, false);
+
+  const paidAmount = Number(existing.paidAmount || 0);
+  const balanceDue = Math.max(0, totals.grandTotal - paidAmount);
+  let status = existing.status;
+  if (paidAmount >= totals.grandTotal) {
+    status = "PAID";
+  } else if (paidAmount > 0) {
+    status = "PARTIAL";
+  } else if (existing.status === "DRAFT") {
+    status = "DRAFT";
+  } else {
+    status = "POSTED";
+  }
 
   const record = await prisma.$transaction(async (tx) => {
     await tx.invoiceItem.deleteMany({ where: { invoiceId: existing.id, companyId } });
@@ -248,7 +267,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
         sgst: tax.sgst,
         igst: tax.igst,
         grandTotal: totals.grandTotal,
-        balanceDue: totals.grandTotal,
+        paidAmount,
+        balanceDue,
+        status,
         notes: header.notes,
         terms: header.terms,
         lines: { create: creates },
@@ -268,10 +289,13 @@ export const postInvoice = async (req: Request, res: Response) => {
   if (invoice.status === "VOID") return fail(res, 400, "INVALID_STATUS", "Void invoice cannot be posted");
 
   const actor = getActor(req);
+  const paidAmount = Number(invoice.paidAmount || 0);
+  const finalStatus = paidAmount >= Number(invoice.grandTotal) ? "PAID" : paidAmount > 0 ? "PARTIAL" : "POSTED";
+
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.invoice.update({
       where: { id: invoice.id },
-      data: { status: "POSTED" },
+      data: { status: finalStatus },
     });
 
     const accounts = await resolveAccountingAccounts(tx, companyId, actor);

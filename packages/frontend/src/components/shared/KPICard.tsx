@@ -9,20 +9,57 @@ interface KPICardProps {
   icon?: ReactNode;
 }
 
-export const KPICard = ({ title, value, subText, trend, trendDirection = "neutral", icon }: KPICardProps) => (
-  <div className="rounded-card border-t-2 border-t-gold-light bg-card p-6 shadow-card">
-    <div className="mb-3 flex items-center justify-between">
-      <p className="text-sm text-muted">{title}</p>
-      {icon}
+export const KPICard = ({
+  title,
+  value,
+  subText,
+  trend,
+  trendDirection = "neutral",
+  icon,
+}: KPICardProps) => {
+  // Dynamically size text so large currency figures fit comfortably inside card boundaries
+  const valueLength = value ? value.length : 0;
+  const fontSizeClass =
+    valueLength >= 14
+      ? "text-base sm:text-lg xl:text-lg 2xl:text-xl"
+      : valueLength >= 11
+        ? "text-lg sm:text-xl xl:text-xl 2xl:text-2xl"
+        : valueLength >= 8
+          ? "text-xl sm:text-2xl xl:text-2xl 2xl:text-3xl"
+          : "text-2xl sm:text-3xl xl:text-3xl 2xl:text-4xl";
+
+  return (
+    <div className="rounded-card border-t-2 border-t-gold-light bg-card p-4 sm:p-5 shadow-card overflow-hidden flex flex-col justify-between">
+      <div className="mb-2 flex items-center justify-between gap-1">
+        <p className="text-xs sm:text-sm font-medium text-muted truncate" title={title}>
+          {title}
+        </p>
+        {icon && <div className="shrink-0">{icon}</div>}
+      </div>
+
+      <div
+        className={`font-mono font-bold text-gold tracking-tight truncate ${fontSizeClass}`}
+        title={value}
+      >
+        {value}
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5 text-xs truncate min-h-[1.25rem]">
+        {trend ? (
+          <span
+            className={`font-semibold shrink-0 ${
+              trendDirection === "up"
+                ? "text-emerald-600"
+                : trendDirection === "down"
+                  ? "text-ruby"
+                  : "text-muted"
+            }`}
+          >
+            {trend}
+          </span>
+        ) : null}
+        {subText ? <span className="text-muted truncate">{subText}</span> : null}
+      </div>
     </div>
-    <div className="font-mono text-[36px] font-bold text-gold">{value}</div>
-    <div className="mt-2 flex items-center gap-2 text-xs">
-      {trend ? (
-        <span className={trendDirection === "up" ? "text-emerald" : trendDirection === "down" ? "text-ruby" : "text-muted"}>
-          {trend}
-        </span>
-      ) : null}
-      {subText ? <span className="text-muted">{subText}</span> : null}
-    </div>
-  </div>
-);
+  );
+};

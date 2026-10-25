@@ -278,7 +278,20 @@ export const AccountsPage = () => {
     } else {
       filtered = filtered.filter((account) => account.isActive);
       if (activeTab !== "All Accounts" && activeTab !== "Groups") {
-        filtered = filtered.filter((account) => account.heading === activeTab.toUpperCase());
+        const tabUpper = activeTab.toUpperCase();
+        filtered = filtered.filter((account) => {
+          if (activeTab === "Equity") {
+            return (
+              account.heading === "EQUITY" ||
+              account.type?.toLowerCase() === "equity" ||
+              account.group?.toLowerCase() === "equity"
+            );
+          }
+          return (
+            account.heading === tabUpper ||
+            account.type?.toUpperCase() === tabUpper
+          );
+        });
       }
     }
 
@@ -684,6 +697,11 @@ export const AccountsPage = () => {
                         >
                           {account.name}
                         </button>
+                        {account.isControlAccount && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">
+                            <Lock className="h-2.5 w-2.5" /> System Control Account
+                          </span>
+                        )}
                         {account.description && <div className="mt-0.5 max-w-[340px] truncate text-xs text-muted">{account.description}</div>}
                       </td>
                       <td className="px-4 py-3 text-slate-600">{account.group || "Ungrouped"}</td>

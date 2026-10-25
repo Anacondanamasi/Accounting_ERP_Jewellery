@@ -11,7 +11,7 @@ import { prisma } from "../../lib/prisma";
 import { getCompanyId, getActor } from "../../lib/requestUtils";
 
 const lineSchema = z.object({
-  sku: z.string().min(1),
+  sku: z.string().optional().nullable().default(""),
   description: z.string().min(1),
   karat: z.string().min(1),
   grossWt: z.coerce.number().nonnegative(),
@@ -22,14 +22,15 @@ const lineSchema = z.object({
   ratePerGram: z.coerce.number().nonnegative(),
   discountPct: z.coerce.number().min(0).max(100),
   gstPct: z.coerce.number().min(0).max(28),
-  hsnCode: z.string().min(1),
+  hsnCode: z.string().optional().default("7113"),
 });
 
 const billSchema = z.object({
   billDate: z.string().min(1),
   dueDate: z.string().min(1),
   supplierId: z.coerce.number(),
-  qualityCertUrl: z.string().optional(),
+  supplierName: z.string().optional().nullable(),
+  qualityCertUrl: z.string().optional().nullable(),
   lines: z.array(lineSchema).min(1),
 });
 
@@ -41,8 +42,12 @@ const billInclude = {
 
 const lineCreates = async (companyId: number, userId: string, lines: z.infer<typeof lineSchema>[]) => {
   const totals = computeJewelleryTotals(lines);
+  const skus = lines
+    .map((line) => line.sku)
+    .filter((s): s is string => typeof s === "string" && s.trim().length > 0);
+
   const items = await prisma.item.findMany({
-    where: { companyId, sku: { in: lines.map((line) => line.sku) } },
+    where: { companyId, sku: { in: skus } },
   });
   const itemBySku = new Map(items.map((item) => [item.sku, item.id]));
 
@@ -50,8 +55,8 @@ const lineCreates = async (companyId: number, userId: string, lines: z.infer<typ
     totals,
     creates: totals.computedLines.map((line) => ({
       companyId,
-      itemId: itemBySku.get(line.sku),
-      sku: line.sku,
+      itemId: line.sku ? itemBySku.get(line.sku) : undefined,
+      sku: line.sku || "",
       description: line.description,
       karat: line.karat,
       grossWt: line.grossWt,
@@ -64,7 +69,7 @@ const lineCreates = async (companyId: number, userId: string, lines: z.infer<typ
       amount: line.amount,
       discountPct: line.discountPct,
       gstPct: line.gstPct,
-      hsnCode: line.hsnCode,
+      hsnCode: line.hsnCode || "7113",
       total: line.total,
       createdBy: userId,
     })),
@@ -119,7 +124,15 @@ export const getBillById = async (req: Request, res: Response) => {
   });
   if (!row) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
 
-  return ok(res, row);
+  const billDate = row.date ? new Date(row.date).toISOString().slice(0, 10) : "";
+  const dueDate = row.dueDate ? new Date(row.dueDate).toISOString().slice(0, 10) : "";
+
+  return ok(res, {
+    ...row,
+    billDate,
+    dueDate,
+    supplierName: row.supplier?.name || "",
+  });
 };
 
 export const createBill = async (req: Request, res: Response) => {
@@ -173,13 +186,24 @@ export const updateBill = async (req: Request, res: Response) => {
 
   const existing = await prisma.bill.findFirst({ where: { id: Number(req.params.id), companyId } });
   if (!existing) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
-  if (existing.status !== "DRAFT") {
-    return fail(res, 400, "INVALID_STATUS", "Only draft bills can be updated");
+  if (existing.status === "VOID") {
+    return fail(res, 400, "INVALID_STATUS", "Void bills cannot be updated");
   }
 
   const { lines, ...header } = parsed.data;
   const { totals, creates } = await lineCreates(companyId, getActor(req), lines);
   const tax = splitGst(totals.taxTotal, false);
+
+  const paidAmount = Number(existing.paidAmount || 0);
+  const balanceDue = Math.max(0, totals.grandTotal - paidAmount);
+  const nextStatus =
+    paidAmount >= totals.grandTotal && totals.grandTotal > 0
+      ? "PAID"
+      : paidAmount > 0
+      ? "PARTIAL"
+      : existing.status === "DRAFT"
+      ? "DRAFT"
+      : "POSTED";
 
   const row = await prisma.$transaction(async (tx) => {
     await tx.billItem.deleteMany({ where: { billId: existing.id, companyId } });
@@ -189,6 +213,7 @@ export const updateBill = async (req: Request, res: Response) => {
         date: new Date(header.billDate),
         dueDate: new Date(header.dueDate),
         supplierId: header.supplierId,
+        status: nextStatus,
         subTotal: totals.subTotal,
         discount: totals.discount,
         taxableAmount: totals.taxableAmount,
@@ -197,7 +222,7 @@ export const updateBill = async (req: Request, res: Response) => {
         sgst: tax.sgst,
         igst: tax.igst,
         grandTotal: totals.grandTotal,
-        balanceDue: totals.grandTotal,
+        balanceDue,
         qualityCertUrl: header.qualityCertUrl,
         lines: { create: creates },
       },
@@ -216,8 +241,12 @@ export const postBill = async (req: Request, res: Response) => {
   if (bill.status === "VOID") return fail(res, 400, "INVALID_STATUS", "Void bill cannot be posted");
 
   const actor = getActor(req);
+  const paidAmount = Number(bill.paidAmount || 0);
+  const grandTotal = Number(bill.grandTotal || 0);
+  const nextStatus = paidAmount >= grandTotal && grandTotal > 0 ? "PAID" : paidAmount > 0 ? "PARTIAL" : "POSTED";
+
   const row = await prisma.$transaction(async (tx) => {
-    const updated = await tx.bill.update({ where: { id: bill.id }, data: { status: "POSTED" } });
+    const updated = await tx.bill.update({ where: { id: bill.id }, data: { status: nextStatus } });
     const accounts = await resolveAccountingAccounts(tx, companyId, actor);
     await upsertPostedJournalForSource(tx, {
       companyId,
@@ -338,7 +367,7 @@ export const recordBillPayment = async (req: Request, res: Response) => {
       data: {
         paidAmount: newPaidAmount,
         balanceDue: newBalanceDue,
-        status: newBalanceDue <= 0 ? "APPROVED" : "POSTED",
+        status: newBalanceDue <= 0 ? "PAID" : "PARTIAL",
       },
       include: billInclude,
     });

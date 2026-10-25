@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { FilterBar } from "@/components/shared/FilterBar";
@@ -7,23 +8,55 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { useExport } from "@/hooks/useExport";
 import { formatCurrency } from "@/lib/formatters";
 import { reportsService } from "@/services/reportsService";
-
-const pad2 = (value: number) => String(value).padStart(2, "0");
-const localDateInputValue = (date: Date) =>
-  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-const firstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+import { PERIOD_PRESETS, getDatesForPeriod } from "@/lib/periodUtils";
 
 export const ProfitLossPage = () => {
-  const today = new Date();
+  const navigate = useNavigate();
+  const initialDates = getDatesForPeriod("all_time");
   const [filters, setFilters] = useState<Record<string, string>>({
-    from: localDateInputValue(firstDayOfMonth(today)),
-    to: localDateInputValue(today),
+    period: "all_time",
+    from: initialDates.from,
+    to: initialDates.to,
     compare: "prior_year",
   });
   const { exportReport } = useExport();
 
+  const handleFilterChange = (key: string, value: string) => {
+    if (key === "period") {
+      if (value === "custom") {
+        setFilters((prev) => ({ ...prev, period: value }));
+      } else {
+        const dates = getDatesForPeriod(value);
+        setFilters((prev) => ({
+          ...prev,
+          period: value,
+          from: dates.from,
+          to: dates.to,
+        }));
+      }
+    } else if (key === "from" || key === "to") {
+      setFilters((prev) => ({
+        ...prev,
+        [key]: value,
+        period: "custom",
+      }));
+    } else {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+    }
+  };
+
+  const handleReset = () => {
+    const dates = getDatesForPeriod("all_time");
+    setFilters({
+      period: "all_time",
+      from: dates.from,
+      to: dates.to,
+      compare: "prior_year",
+    });
+  };
+
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["profit-loss", filters],
+    queryKey: ["profit-loss", filters.from, filters.to, filters.compare],
     queryFn: () => reportsService.getProfitLoss(filters),
   });
 
@@ -49,8 +82,14 @@ export const ProfitLossPage = () => {
       />
       <FilterBar
         filters={[
-          { key: "from", type: "date", label: "From" },
-          { key: "to", type: "date", label: "To" },
+          {
+            key: "period",
+            type: "select",
+            label: "Select Period",
+            options: PERIOD_PRESETS.map((p) => ({ label: p.label, value: p.value })),
+          },
+          { key: "from", type: "date", label: "From Date" },
+          { key: "to", type: "date", label: "To Date" },
           {
             key: "compare",
             type: "select",
@@ -62,14 +101,8 @@ export const ProfitLossPage = () => {
           },
         ]}
         values={filters}
-        onChange={(key, value) => setFilters((prev) => ({ ...prev, [key]: value }))}
-        onReset={() =>
-          setFilters({
-            from: localDateInputValue(firstDayOfMonth(new Date())),
-            to: localDateInputValue(new Date()),
-            compare: "prior_year",
-          })
-        }
+        onChange={handleFilterChange}
+        onReset={handleReset}
       />
       <div className="rounded-card border-t-2 border-t-gold-light bg-card p-6 shadow-card">
         {isLoading ? (
@@ -87,24 +120,72 @@ export const ProfitLossPage = () => {
               <details open>
                 <summary className="cursor-pointer font-display text-lg font-semibold">Revenue</summary>
                 {(data?.revenue?.accounts ?? []).map((row) => (
-                  <div key={row.code} className="flex justify-between"><span>{row.name}</span><span className="font-mono text-emerald">{formatCurrency(row.amount)}</span></div>
+                  <div key={row.code} className="flex justify-between py-1 hover:bg-gold-tint/20 px-2 rounded transition-colors group">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ledger/${row.id || row.code}?from=${filters.from}&to=${filters.to}`)}
+                      className="text-left font-medium text-charcoal hover:text-gold hover:underline cursor-pointer"
+                    >
+                      {row.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ledger/${row.id || row.code}?from=${filters.from}&to=${filters.to}`)}
+                      className="font-mono text-emerald hover:text-gold hover:underline cursor-pointer font-semibold"
+                      title={`View ${row.name} Ledger (${filters.from} to ${filters.to})`}
+                    >
+                      {formatCurrency(row.amount)}
+                    </button>
+                  </div>
                 ))}
-                <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold"><span>Total Revenue</span><span className="font-mono text-emerald">{formatCurrency(data?.revenue?.total ?? 0)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold px-2"><span>Total Revenue</span><span className="font-mono text-emerald">{formatCurrency(data?.revenue?.total ?? 0)}</span></div>
               </details>
               <details open>
                 <summary className="cursor-pointer font-display text-lg font-semibold">Cost of Goods</summary>
                 {(data?.cogs?.accounts ?? []).map((row) => (
-                  <div key={row.code} className="flex justify-between"><span>{row.name}</span><span className="font-mono text-ruby">{formatCurrency(row.amount)}</span></div>
+                  <div key={row.code} className="flex justify-between py-1 hover:bg-gold-tint/20 px-2 rounded transition-colors group">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ledger/${row.id || row.code}?from=${filters.from}&to=${filters.to}`)}
+                      className="text-left font-medium text-charcoal hover:text-gold hover:underline cursor-pointer"
+                    >
+                      {row.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ledger/${row.id || row.code}?from=${filters.from}&to=${filters.to}`)}
+                      className="font-mono text-ruby hover:text-gold hover:underline cursor-pointer font-semibold"
+                      title={`View ${row.name} Ledger (${filters.from} to ${filters.to})`}
+                    >
+                      {formatCurrency(row.amount)}
+                    </button>
+                  </div>
                 ))}
-                <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold"><span>Total COGS</span><span className="font-mono text-ruby">{formatCurrency(data?.cogs?.total ?? 0)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold px-2"><span>Total COGS</span><span className="font-mono text-ruby">{formatCurrency(data?.cogs?.total ?? 0)}</span></div>
               </details>
               <div className="flex justify-between rounded bg-gold-tint px-3 py-2 font-medium"><span>Gross Profit</span><span className="font-mono text-gold">{formatCurrency(data?.grossProfit ?? 0)}</span></div>
               <details open>
                 <summary className="cursor-pointer font-display text-lg font-semibold">Expenses</summary>
                 {(data?.expenses?.accounts ?? []).map((row) => (
-                  <div key={row.code} className="flex justify-between"><span>{row.name}</span><span className="font-mono text-ruby">{formatCurrency(row.amount)}</span></div>
+                  <div key={row.code} className="flex justify-between py-1 hover:bg-gold-tint/20 px-2 rounded transition-colors group">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ledger/${row.id || row.code}?from=${filters.from}&to=${filters.to}`)}
+                      className="text-left font-medium text-charcoal hover:text-gold hover:underline cursor-pointer"
+                    >
+                      {row.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/ledger/${row.id || row.code}?from=${filters.from}&to=${filters.to}`)}
+                      className="font-mono text-ruby hover:text-gold hover:underline cursor-pointer font-semibold"
+                      title={`View ${row.name} Ledger (${filters.from} to ${filters.to})`}
+                    >
+                      {formatCurrency(row.amount)}
+                    </button>
+                  </div>
                 ))}
-                <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold"><span>Total Expenses</span><span className="font-mono text-ruby">{formatCurrency(data?.expenses?.total ?? 0)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold px-2"><span>Total Expenses</span><span className="font-mono text-ruby">{formatCurrency(data?.expenses?.total ?? 0)}</span></div>
               </details>
               <div className="flex justify-between rounded bg-charcoal px-3 py-2 font-semibold text-white"><span>Net Profit</span><span className="font-mono text-gold-light">{formatCurrency(data?.netProfit ?? 0)}</span></div>
             </div>

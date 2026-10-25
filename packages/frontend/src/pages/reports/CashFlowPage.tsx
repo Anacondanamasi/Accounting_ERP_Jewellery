@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -13,12 +14,20 @@ const localDateInputValue = (date: Date) =>
 const firstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 export const CashFlowPage = () => {
+  const navigate = useNavigate();
   const today = new Date();
   const [filters, setFilters] = useState<Record<string, string>>({
     from: localDateInputValue(firstDayOfMonth(today)),
     to: localDateInputValue(today),
   });
   const { exportReport } = useExport();
+
+  const handleDrilldown = (label: string) => {
+    const code = label.split(" - ")[0].trim();
+    if (code) {
+      navigate(`/ledger/${code}?from=${filters.from}&to=${filters.to}`);
+    }
+  };
 
   const { data, isLoading, isError, refetch } = useQuery<CashFlowResponse>({
     queryKey: ["cash-flow", filters],
@@ -65,11 +74,27 @@ export const CashFlowPage = () => {
           <h3 className="mb-2 font-display text-xl font-semibold">Operating</h3>
           {isLoading ? <div>Loading...</div> : (
             <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span>Net Profit</span><span className="font-mono">{formatCurrency(data?.operating.netProfit ?? 0)}</span></div>
+              <div className="flex justify-between py-1 px-2"><span>Net Profit</span><span className="font-mono font-semibold">{formatCurrency(data?.operating.netProfit ?? 0)}</span></div>
               {(data?.operating.adjustments ?? []).map((item) => (
-                <div key={item.label} className="flex justify-between"><span>{item.label}</span><span className={`font-mono ${item.amount >= 0 ? "text-emerald" : "text-ruby"}`}>{formatCurrency(item.amount)}</span></div>
+                <div key={item.label} className="flex justify-between py-1 px-2 rounded hover:bg-gold-tint/20 transition-colors group">
+                  <button
+                    type="button"
+                    onClick={() => handleDrilldown(item.label)}
+                    className="text-left font-medium text-charcoal hover:text-gold hover:underline cursor-pointer"
+                  >
+                    {item.label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDrilldown(item.label)}
+                    className={`font-mono font-semibold hover:text-gold hover:underline cursor-pointer ${item.amount >= 0 ? "text-emerald" : "text-ruby"}`}
+                    title={`View ${item.label} Ledger`}
+                  >
+                    {formatCurrency(item.amount)}
+                  </button>
+                </div>
               ))}
-              <div className="flex justify-between border-t border-border pt-1 font-semibold"><span>Net Operating</span><span className="font-mono">{formatCurrency(data?.operating.net ?? 0)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1 font-semibold px-2"><span>Net Operating</span><span className="font-mono">{formatCurrency(data?.operating.net ?? 0)}</span></div>
             </div>
           )}
         </div>
@@ -78,9 +103,25 @@ export const CashFlowPage = () => {
           {isLoading ? <div>Loading...</div> : (
             <div className="space-y-1 text-sm">
               {(data?.investing.items ?? []).map((item) => (
-                <div key={item.label} className="flex justify-between"><span>{item.label}</span><span className={`font-mono ${item.amount >= 0 ? "text-emerald" : "text-ruby"}`}>{formatCurrency(item.amount)}</span></div>
+                <div key={item.label} className="flex justify-between py-1 px-2 rounded hover:bg-gold-tint/20 transition-colors group">
+                  <button
+                    type="button"
+                    onClick={() => handleDrilldown(item.label)}
+                    className="text-left font-medium text-charcoal hover:text-gold hover:underline cursor-pointer"
+                  >
+                    {item.label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDrilldown(item.label)}
+                    className={`font-mono font-semibold hover:text-gold hover:underline cursor-pointer ${item.amount >= 0 ? "text-emerald" : "text-ruby"}`}
+                    title={`View ${item.label} Ledger`}
+                  >
+                    {formatCurrency(item.amount)}
+                  </button>
+                </div>
               ))}
-              <div className="flex justify-between border-t border-border pt-1 font-semibold"><span>Net Investing</span><span className="font-mono">{formatCurrency(data?.investing.net ?? 0)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1 font-semibold px-2"><span>Net Investing</span><span className="font-mono">{formatCurrency(data?.investing.net ?? 0)}</span></div>
             </div>
           )}
         </div>
@@ -89,9 +130,25 @@ export const CashFlowPage = () => {
           {isLoading ? <div>Loading...</div> : (
             <div className="space-y-1 text-sm">
               {(data?.financing.items ?? []).map((item) => (
-                <div key={item.label} className="flex justify-between"><span>{item.label}</span><span className={`font-mono ${item.amount >= 0 ? "text-emerald" : "text-ruby"}`}>{formatCurrency(item.amount)}</span></div>
+                <div key={item.label} className="flex justify-between py-1 px-2 rounded hover:bg-gold-tint/20 transition-colors group">
+                  <button
+                    type="button"
+                    onClick={() => handleDrilldown(item.label)}
+                    className="text-left font-medium text-charcoal hover:text-gold hover:underline cursor-pointer"
+                  >
+                    {item.label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDrilldown(item.label)}
+                    className={`font-mono font-semibold hover:text-gold hover:underline cursor-pointer ${item.amount >= 0 ? "text-emerald" : "text-ruby"}`}
+                    title={`View ${item.label} Ledger`}
+                  >
+                    {formatCurrency(item.amount)}
+                  </button>
+                </div>
               ))}
-              <div className="flex justify-between border-t border-border pt-1 font-semibold"><span>Net Financing</span><span className="font-mono">{formatCurrency(data?.financing.net ?? 0)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1 font-semibold px-2"><span>Net Financing</span><span className="font-mono">{formatCurrency(data?.financing.net ?? 0)}</span></div>
             </div>
           )}
         </div>

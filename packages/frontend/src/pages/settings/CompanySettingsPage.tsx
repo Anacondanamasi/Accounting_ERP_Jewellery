@@ -7,6 +7,7 @@ import { z } from "zod";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { settingsService, type CompanySettings, type NumberSeries } from "@/services/settingsService";
 import { SettingsCenterPanel } from "./SettingsCenterPanel";
+import { FinancialYearSettingsTab } from "./FinancialYearSettingsTab";
 import { useAuthStore } from "@/stores/authStore";
 
 const companySchema = z.object({
@@ -34,7 +35,7 @@ type CompanyInput = z.infer<typeof companySchema>;
 export const CompanySettingsPage = () => {
   const updateCompany = useAuthStore((state) => state.updateCompany);
   const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
-  const [activeTab, setActiveTab] = useState<"profile" | "advanced">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "financial-years" | "advanced">("profile");
 
   const form = useForm<CompanyInput>({
     resolver: zodResolver(companySchema),
@@ -60,12 +61,12 @@ export const CompanySettingsPage = () => {
   });
 
   const { data: company, isLoading, isError, refetch } = useQuery({
-    queryKey: ["settings-company"],
+    queryKey: ["settings-company", currentCompanyId],
     queryFn: () => settingsService.getCompanySettings(),
   });
 
   const { data: series = [], refetch: refetchSeries } = useQuery({
-    queryKey: ["settings-number-series"],
+    queryKey: ["settings-number-series", currentCompanyId],
     queryFn: () => settingsService.getNumberSeries(),
   });
 
@@ -138,6 +139,13 @@ export const CompanySettingsPage = () => {
           General Profile & Series
         </button>
         <button
+          className={`pb-2 text-sm font-semibold transition-colors ${activeTab === "financial-years" ? "border-b-2 border-gold text-charcoal" : "text-muted hover:text-charcoal"}`}
+          onClick={() => setActiveTab("financial-years")}
+          type="button"
+        >
+          Financial Year & Closing
+        </button>
+        <button
           className={`pb-2 text-sm font-semibold transition-colors ${activeTab === "advanced" ? "border-b-2 border-gold text-charcoal" : "text-muted hover:text-charcoal"}`}
           onClick={() => setActiveTab("advanced")}
           type="button"
@@ -206,6 +214,12 @@ export const CompanySettingsPage = () => {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === "financial-years" && (
+        <div className="animate-in fade-in duration-300">
+          <FinancialYearSettingsTab />
         </div>
       )}
 

@@ -1,7 +1,8 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { DataTable } from "@/components/shared/DataTable";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -84,8 +85,30 @@ export const JournalListPage = () => {
       />
       <DataTable
         columns={[
-          col.accessor("date", { header: "Date" }),
-          col.accessor("entryNo", { header: "Entry No" }),
+          col.accessor("date", {
+            header: "Date",
+            cell: (info) => {
+              const val = info.getValue();
+              if (!val) return "—";
+              try {
+                return format(new Date(val), "dd-MM-yyyy");
+              } catch {
+                return String(val).slice(0, 10);
+              }
+            },
+          }),
+          col.accessor("entryNo", {
+            header: "Entry No",
+            cell: (info) => (
+              <Link
+                className="font-mono font-medium text-sapphire hover:underline"
+                to={`/journal/${info.row.original.id}/edit`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {info.getValue()}
+              </Link>
+            ),
+          }),
           col.accessor("narration", { header: "Narration" }),
           col.accessor((row) => totalDebit(row), {
             id: "debit",
@@ -102,22 +125,39 @@ export const JournalListPage = () => {
             id: "actions",
             header: "Actions",
             cell: ({ row }) => (
-              <div className="flex gap-2">
-                <button className="rounded border border-border px-2 py-1 text-xs" onClick={() => navigate(`/journal/${row.original.id}/edit`)} type="button">
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="rounded border border-border px-2 py-1 text-xs hover:bg-slate-50 transition-colors"
+                  onClick={() => navigate(`/journal/${row.original.id}/edit`)}
+                  type="button"
+                >
                   Edit
                 </button>
-                <button className="rounded border border-border px-2 py-1 text-xs" onClick={() => postMutation.mutate(row.original.id)} type="button">
-                  Post
-                </button>
-                <button className="rounded border border-border px-2 py-1 text-xs" onClick={() => reverseMutation.mutate(row.original.id)} type="button">
-                  Reverse
-                </button>
+                {row.original.status === "DRAFT" && (
+                  <button
+                    className="rounded border border-border px-2 py-1 text-xs hover:bg-slate-50 transition-colors"
+                    onClick={() => postMutation.mutate(row.original.id)}
+                    type="button"
+                  >
+                    Post
+                  </button>
+                )}
+                {row.original.status === "POSTED" && (
+                  <button
+                    className="rounded border border-border px-2 py-1 text-xs hover:bg-slate-50 transition-colors"
+                    onClick={() => reverseMutation.mutate(row.original.id)}
+                    type="button"
+                  >
+                    Reverse
+                  </button>
+                )}
               </div>
             ),
           }),
         ]}
         data={data ?? []}
         loading={isLoading}
+        onRowClick={(row) => navigate(`/journal/${row.id}/edit`)}
       />
     </div>
   );

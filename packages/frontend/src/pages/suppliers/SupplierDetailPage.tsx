@@ -10,6 +10,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { supplierService } from "@/services/supplierService";
 import { Truck, Clock, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
+import { SupplierFormModal } from "./SupplierFormModal";
 
 type TabKey = "ledger" | "bills" | "payments" | "notes";
 
@@ -49,6 +50,7 @@ export const SupplierDetailPage = () => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>("ledger");
   const [search, setSearch] = useState("");
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   /* ── ESC: return to ledger tab or suppliers list ── */
   useEffect(() => {
@@ -61,7 +63,7 @@ export const SupplierDetailPage = () => {
     return () => window.removeEventListener("keydown", handler);
   }, [tab, navigate]);
 
-  const { data: detail, isLoading, isError } = useQuery({
+  const { data: detail, isLoading, isError, refetch } = useQuery({
     queryKey: ["supplier", id],
     queryFn: () => supplierService.getById(id),
   });
@@ -123,7 +125,7 @@ export const SupplierDetailPage = () => {
             <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => navigate("/suppliers")} type="button">
               Back
             </button>
-            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => navigate(`/suppliers/${id}/edit`)} type="button">
+            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => setEditModalOpen(true)} type="button">
               Edit
             </button>
           </>
@@ -198,7 +200,7 @@ export const SupplierDetailPage = () => {
                     >
                       {/* Type */}
                       <td className="px-4 py-3">
-                        <span className={`font-semibold text-xs ${isDebitNote ? "text-ruby" : isBill ? "text-charcoal" : "text-emerald-600"}`}>
+                        <span className={`font-semibold text-xs ${isDebitNote ? "text-ruby" : isBill ? "text-charcoal" : row.type === "Journal Entry" ? "text-sapphire font-bold" : "text-emerald-600"}`}>
                           {row.type}
                         </span>
                       </td>
@@ -245,7 +247,7 @@ export const SupplierDetailPage = () => {
                       {/* Due amount */}
                       <td className="px-4 py-3 text-right">
                         <span className={`font-mono text-xs font-semibold ${toN(row.due) < 0 ? "text-ruby" : toN(row.due) > 0 ? "text-amber-600" : "text-muted"}`}>
-                          {toN(row.due) !== 0 ? `(${formatCurrency(Math.abs(toN(row.due)))})` : "—"}
+                          {toN(row.due) < 0 ? `(${formatCurrency(Math.abs(toN(row.due)))})` : toN(row.due) > 0 ? formatCurrency(toN(row.due)) : "—"}
                         </span>
                       </td>
 
@@ -316,7 +318,7 @@ export const SupplierDetailPage = () => {
               </thead>
               <tbody>
                 {(bills ?? []).map((bill: any) => (
-                  <tr key={bill.id} className="border-t border-border/60 hover:bg-gold/5 cursor-pointer" onClick={() => navigate(`/bills/${bill.id}`)}>
+                  <tr key={bill.id} className="border-t border-border/60 hover:bg-gold/5 cursor-pointer" onClick={() => navigate(`/bills/${bill.id}/edit`)}>
                     <td className="px-4 py-3">
                       <button className="font-mono text-sm font-semibold text-sapphire underline" type="button">{bill.billNo}</button>
                     </td>
@@ -371,6 +373,15 @@ export const SupplierDetailPage = () => {
           <p className="text-sm text-muted">{detail.notes || "No notes available for this supplier."}</p>
         </div>
       )}
+
+      <SupplierFormModal
+        open={editModalOpen}
+        initialData={detail}
+        onClose={() => setEditModalOpen(false)}
+        onSaved={() => {
+          void refetch();
+        }}
+      />
     </div>
   );
 };

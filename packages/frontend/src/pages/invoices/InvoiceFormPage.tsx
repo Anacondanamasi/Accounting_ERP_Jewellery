@@ -1,8 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { invoiceFormSchema, type InvoiceFormInput } from "@jewelledger/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Printer, Tag, Trash2, Save, Send } from "lucide-react";
+import { Plus, Printer, Tag, Trash2, Save, Send, Copy, Download, CreditCard, Check, AlertCircle } from "lucide-react";
 import { QuickCustomerModal } from "@/components/shared/QuickCustomerModal";
+import { RecordPaymentModal } from "@/pages/invoices/RecordPaymentModal";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useEffect, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
@@ -96,12 +98,14 @@ export const InvoiceFormPage = () => {
   // Products & Services master lookup for line item auto-fill
   const { productOptions, buildAutofill, searchProducts } = useProductServiceLookup("sales");
 
+  const [paymentOpen, setPaymentOpen] = useState(false);
+
   const { data: nextNo } = useQuery({
     queryKey: ["invoice-next-number"],
     queryFn: invoiceService.getNextNumber,
   });
 
-  const { data: existing } = useQuery({
+  const { data: existing, refetch: refetchExisting } = useQuery({
     queryKey: ["invoice", id],
     queryFn: () => invoiceService.getById(Number(id)),
     enabled: editing,
@@ -123,15 +127,64 @@ export const InvoiceFormPage = () => {
     meta: `${i.karat} | ${i.netWt}g`,
   }));
 
-  const saveMutation = useMutation({
+  const saveAndCloseMutation = useMutation({
     mutationFn: async (payload: InvoiceFormInput) =>
       editing ? invoiceService.update(Number(id), payload) : invoiceService.create(payload),
-    onSuccess: (record) => {
-      toast.success(editing ? "Invoice updated" : "Invoice created");
-      navigate(`/invoices/${record.id}`);
+    onSuccess: () => {
+      toast.success(editing ? "Invoice saved successfully" : "Invoice created successfully");
+      navigate("/invoices");
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Unable to save invoice");
+    },
+  });
+
+  const saveDraftMutation = useMutation({
+    mutationFn: async (payload: InvoiceFormInput) =>
+      editing ? invoiceService.update(Number(id), payload) : invoiceService.create(payload),
+    onSuccess: (record) => {
+      toast.success(editing ? "Invoice updated" : "Invoice draft created");
+      if (!editing && record?.id) {
+        navigate(`/invoices/${record.id}/edit`);
+      } else {
+        void refetchExisting();
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Unable to save draft");
+    },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: () => invoiceService.duplicate(Number(id)),
+    onSuccess: (record) => {
+      toast.success("Invoice duplicated successfully");
+      navigate(`/invoices/${record.id}/edit`);
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Unable to duplicate invoice");
+    },
+  });
+
+  const postMutation = useMutation({
+    mutationFn: () => invoiceService.post(Number(id)),
+    onSuccess: () => {
+      toast.success("Invoice posted successfully");
+      void refetchExisting();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Unable to post invoice");
+    },
+  });
+
+  const voidMutation = useMutation({
+    mutationFn: () => invoiceService.void(Number(id)),
+    onSuccess: () => {
+      toast.success("Invoice voided successfully");
+      navigate("/invoices");
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Unable to void invoice");
     },
   });
 
@@ -162,50 +215,56 @@ export const InvoiceFormPage = () => {
     }
   };
 
-  const saveAndPdfMutation = useMutation({
-    mutationFn: async (payload: InvoiceFormInput) => {
-      const record = editing ? await invoiceService.update(Number(id), payload) : await invoiceService.create(payload);
-      return record;
-    },
-    onSuccess: async (record) => {
-      toast.success("Invoice saved");
-      try {
-        await openInvoicePdf(record.id, true);
-      } catch {
-        toast.error("Saved, but unable to open PDF");
-      }
-      navigate(`/invoices/${record.id}`);
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Unable to save invoice");
-    },
-  });
+  const handleDownloadPdf = async () => {
+    if (!id) return;
+    try {
+      await openInvoicePdf(Number(id), false);
+    } catch {
+      toast.error("Unable to download PDF");
+    }
+  };
 
-  const saveAndPostMutation = useMutation({
-    mutationFn: async (payload: InvoiceFormInput) => {
-      const record = editing ? await invoiceService.update(Number(id), payload) : await invoiceService.create(payload);
-      return invoiceService.post(record.id);
-    },
-    onSuccess: (record) => {
-      toast.success("Invoice posted successfully");
-      navigate(`/invoices/${record.id}`);
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Unable to post invoice");
-    },
-  });
+  const handlePrintPdf = async () => {
+    if (!id) return;
+    try {
+      await openInvoicePdf(Number(id), true);
+    } catch {
+      toast.error("Unable to print PDF");
+    }
+  };
 
   useEffect(() => {
     if (!existing || !editing) return;
+    const rawInvDate = existing.invoiceDate || existing.date;
+    const invDate = rawInvDate ? new Date(rawInvDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const rawDue = existing.dueDate;
+    const dueDate = rawDue ? new Date(rawDue).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
     reset({
-      invoiceDate: existing.invoiceDate,
-      dueDate: existing.dueDate,
+      invoiceDate: invDate,
+      dueDate: dueDate,
       customerId: existing.customerId,
       salespersonId: existing.salespersonId ?? null,
-      placeOfSupply: "Gujarat",
+      placeOfSupply: existing.placeOfSupply || "Gujarat",
       notes: existing.notes ?? "",
       terms: existing.terms ?? "",
-      lines: existing.lines,
+      lines: (existing.lines && existing.lines.length > 0)
+        ? existing.lines.map((l: any) => ({
+            sku: l.sku || "",
+            description: l.description || "",
+            karat: l.karat || "22K",
+            grossWt: Number(l.grossWt) || 0,
+            netWt: Number(l.netWt) || 0,
+            stoneWt: Number(l.stoneWt) || 0,
+            makingType: l.makingType || "PER_GRAM",
+            makingRate: Number(l.makingRate) || 0,
+            ratePerGram: Number(l.ratePerGram) || 0,
+            discountPct: Number(l.discountPct) || 0,
+            gstPct: Number(l.gstPct) || 3,
+            hsnCode: l.hsnCode || "7113",
+            huid: l.huid || "",
+          }))
+        : [defaultLine],
     });
   }, [editing, existing, reset]);
 
@@ -267,59 +326,142 @@ export const InvoiceFormPage = () => {
     }
   };
 
-  const onSubmit = handleSubmit(async (values) => {
-    await saveMutation.mutateAsync(values);
+  const onSaveAndClose = handleSubmit(async (values) => {
+    await saveAndCloseMutation.mutateAsync(values);
   }, onInvalid);
 
-  const onSaveAndPost = handleSubmit(async (values) => {
-    await saveAndPostMutation.mutateAsync(values);
+  const onSaveDraft = handleSubmit(async (values) => {
+    await saveDraftMutation.mutateAsync(values);
   }, onInvalid);
 
-  const onSaveAndPdf = handleSubmit(async (values) => {
-    await saveAndPdfMutation.mutateAsync(values);
-  }, onInvalid);
-
-  const onPrintCurrent = async () => {
-    if (!id) return;
-    await openInvoicePdf(Number(id), true);
-  };
-
-  const busy = saveMutation.isPending || saveAndPostMutation.isPending || saveAndPdfMutation.isPending || isSubmitting;
+  const busy =
+    saveAndCloseMutation.isPending ||
+    saveDraftMutation.isPending ||
+    duplicateMutation.isPending ||
+    postMutation.isPending ||
+    voidMutation.isPending ||
+    isSubmitting;
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title={editing ? "Edit Invoice" : "New Sales Invoice"}
-        subtitle={`Invoice No: ${existing?.invoiceNo ?? nextNo?.invoiceNo ?? "..."}`}
+        title={
+          <div className="flex items-center gap-3">
+            <span>{editing ? "Edit Invoice" : "New Sales Invoice"}</span>
+            {existing?.status && <StatusBadge status={existing.status} />}
+          </div>
+        }
+        subtitle={
+          editing
+            ? `Invoice No: ${existing?.invoiceNo ?? "..."}${
+                existing?.customer?.name ? ` · Customer: ${existing.customer.name}` : ""
+              }${
+                existing?.balanceDue !== undefined
+                  ? ` · Balance Due: ${formatCurrency(existing.balanceDue)}`
+                  : ""
+              }`
+            : `Invoice No: ${nextNo?.invoiceNo ?? "..."}`
+        }
         actions={
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => navigate("/invoices")} type="button">
               Cancel
             </Button>
-            <Button variant="outline" loading={busy} onClick={() => onSubmit()} type="button">
-              <Save className="mr-2 h-4 w-4" />
+
+            {editing && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => duplicateMutation.mutate()}
+                  disabled={duplicateMutation.isPending || busy}
+                  type="button"
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  Duplicate
+                </Button>
+
+                {existing?.status === "DRAFT" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => postMutation.mutate()}
+                    disabled={postMutation.isPending || busy}
+                    type="button"
+                  >
+                    <Send className="mr-1.5 h-3.5 w-3.5" />
+                    Post
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  onClick={() => void handleDownloadPdf()}
+                  type="button"
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  PDF
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => void handlePrintPdf()}
+                  type="button"
+                >
+                  <Printer className="mr-1.5 h-3.5 w-3.5" />
+                  Print
+                </Button>
+
+                {Number(existing?.balanceDue) > 0 && existing?.status !== "VOID" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setPaymentOpen(true)}
+                    type="button"
+                  >
+                    <CreditCard className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
+                    Record Payment
+                  </Button>
+                )}
+
+                {existing?.status !== "VOID" && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to void this invoice?")) {
+                        voidMutation.mutate();
+                      }
+                    }}
+                    disabled={voidMutation.isPending || busy}
+                    type="button"
+                  >
+                    Void
+                  </Button>
+                )}
+              </>
+            )}
+
+            <Button
+              variant="outline"
+              loading={saveDraftMutation.isPending}
+              onClick={() => onSaveDraft()}
+              type="button"
+            >
+              <Save className="mr-1.5 h-3.5 w-3.5" />
               Save Draft
             </Button>
-            {editing ? (
-              <Button variant="outline" onClick={() => void onPrintCurrent()} type="button">
-                <Printer className="mr-2 h-4 w-4" />
-                Print PDF
-              </Button>
-            ) : (
-              <Button variant="outline" loading={busy} onClick={() => onSaveAndPdf()} type="button">
-                <Printer className="mr-2 h-4 w-4" />
-                Save & Print PDF
-              </Button>
-            )}
-            <Button loading={busy} onClick={() => onSaveAndPost()} type="button">
-              <Send className="mr-2 h-4 w-4" />
-              Save & Post
+
+            <Button
+              className="bg-gold hover:bg-gold-light text-white font-semibold shadow-sm"
+              loading={saveAndCloseMutation.isPending}
+              onClick={() => onSaveAndClose()}
+              type="button"
+            >
+              <Check className="mr-1.5 h-4 w-4" />
+              Save & Close
             </Button>
-          </>
+          </div>
         }
       />
 
-      <form className="space-y-4" onSubmit={onSubmit} noValidate>
+      <form className="space-y-4" onSubmit={onSaveAndClose} noValidate>
         <div className="grid gap-6 rounded-card border-t-2 border-t-gold bg-card p-8 shadow-card md:grid-cols-4">
           <Input
             label="Invoice Date"
@@ -606,6 +748,56 @@ export const InvoiceFormPage = () => {
           </div>
         </div>
       </form>
+
+      {/* Payment History if payments exist */}
+      {editing && existing?.payments && existing.payments.length > 0 && (
+        <div className="rounded-card border-t-2 border-t-gold-light bg-card p-6 shadow-card">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-display text-lg font-semibold text-charcoal">Payment History</h3>
+            <span className="font-mono text-xs font-semibold text-emerald-600">
+              Total Paid: {formatCurrency(existing.paidAmount || 0)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gold/5 text-left text-xs font-semibold text-muted">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Mode</th>
+                  <th className="px-4 py-2">Reference</th>
+                  <th className="px-4 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {existing.payments.map((p: any) => (
+                  <tr key={p.id} className="border-t border-border/60">
+                    <td className="px-4 py-2 text-xs">{new Date(p.date).toLocaleDateString("en-IN")}</td>
+                    <td className="px-4 py-2 text-xs">{p.mode}</td>
+                    <td className="px-4 py-2 text-xs text-muted">{p.reference || "—"}</td>
+                    <td className="px-4 py-2 text-right font-mono text-xs font-semibold text-emerald-600">
+                      {formatCurrency(p.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Record Payment Modal */}
+      {editing && existing && (
+        <RecordPaymentModal
+          open={paymentOpen}
+          invoiceId={Number(id)}
+          invoiceNo={existing.invoiceNo}
+          balanceDue={Number(existing.balanceDue || 0)}
+          onClose={() => setPaymentOpen(false)}
+          onSaved={() => {
+            void refetchExisting();
+          }}
+        />
+      )}
 
       {isCustomerModalOpen && (
         <QuickCustomerModal

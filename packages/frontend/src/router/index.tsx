@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuthStore } from "@/stores/authStore";
+import { LandingPage } from "@/pages/landing/LandingPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { RegisterPage } from "@/pages/auth/RegisterPage";
 import { VerifyEmailPage } from "@/pages/auth/VerifyEmailPage";
@@ -101,7 +102,21 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   return <>{children}</>;
 };
 
+const RootRoute = () => {
+  const token = useAuthStore((state) => state.token);
+  if (!token) {
+    return <LandingPage />;
+  }
+  return (
+    <ProtectedRoute>
+      <AppLayout />
+    </ProtectedRoute>
+  );
+};
+
 export const router = createBrowserRouter([
+  { path: "/welcome", element: <LandingPage /> },
+  { path: "/landing", element: <LandingPage /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
   { path: "/verify-email", element: <VerifyEmailPage /> },
@@ -111,16 +126,14 @@ export const router = createBrowserRouter([
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   {
     path: "/",
-    element: (
-      <ProtectedRoute>
-        <AppLayout />
-      </ProtectedRoute>
-    ),
+    element: <RootRoute />,
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: "dashboard", element: <DashboardPage /> },
       { path: "accounts", element: <Navigate replace to="/ledger" /> },
       { path: "journal", element: <JournalListPage /> },
       { path: "journal/new", element: <JournalEntryForm /> },
+      { path: "journal/:id", element: <JournalEntryForm /> },
       { path: "journal/:id/edit", element: <JournalEntryForm /> },
       { path: "expenses", element: <ExpenseListPage /> },
       { path: "expenses/new", element: <ExpenseFormPage /> },
@@ -133,7 +146,7 @@ export const router = createBrowserRouter([
       { path: "day-book", element: <DayBookPage /> },
       { path: "invoices", element: <InvoiceListPage /> },
       { path: "invoices/new", element: <InvoiceFormPage /> },
-      { path: "invoices/:id", element: <InvoiceViewPage /> },
+      { path: "invoices/:id", element: <InvoiceFormPage /> },
       { path: "invoices/:id/edit", element: <InvoiceFormPage /> },
       { path: "credit-notes", element: <CreditNoteListPage /> },
       { path: "credit-notes/new", element: <CreditNoteFormPage /> },
@@ -148,7 +161,7 @@ export const router = createBrowserRouter([
       { path: "ageing/receivables", element: <ReceivablesAgeingPage /> },
       { path: "bills", element: <BillListPage /> },
       { path: "bills/new", element: <BillFormPage /> },
-      { path: "bills/:id", element: <BillViewPage /> },
+      { path: "bills/:id", element: <BillFormPage /> },
       { path: "bills/:id/edit", element: <BillFormPage /> },
       { path: "debit-notes", element: <DebitNoteListPage /> },
       { path: "debit-notes/new", element: <DebitNoteFormPage /> },

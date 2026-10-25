@@ -17,6 +17,38 @@ const supplierSchema = z.object({
   notes: z.string().optional(),
 });
 
+const getSupplierJournalLines = async (companyId: number, supplierId: number, supplierName: string) => {
+  const apAccounts = await prisma.account.findMany({
+    where: {
+      companyId,
+      OR: [
+        { code: "2100" },
+        { name: { contains: "Payable", mode: "insensitive" } },
+        { group: { contains: "Payable", mode: "insensitive" } },
+        { group: { contains: "Creditor", mode: "insensitive" } },
+      ],
+    },
+    select: { id: true },
+  });
+  const apAccountIds = apAccounts.map((a) => a.id);
+  if (apAccountIds.length === 0) return [];
+
+  return prisma.journalLine.findMany({
+    where: {
+      companyId,
+      accountId: { in: apAccountIds },
+      OR: [
+        { narration: { contains: `[Party: ${supplierName}`, mode: "insensitive" } },
+        { narration: { contains: `#${supplierId}]` } },
+        { narration: { contains: supplierName, mode: "insensitive" } },
+      ],
+      entry: { status: { not: "VOID" } },
+    },
+    include: { entry: true },
+    orderBy: { entry: { date: "asc" } },
+  });
+};
+
 export const listSuppliers = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
   
@@ -50,15 +82,22 @@ export const listSuppliers = async (req: Request, res: Response) => {
   });
 
   const suppliersWithFinancials = await Promise.all(rows.map(async (row) => {
-    const aggregate = await prisma.bill.aggregate({
-      where: { companyId, supplierId: row.id, status: { not: "VOID" } },
-      _sum: { grandTotal: true, balanceDue: true }
-    });
+    const [aggregate, journalLines] = await Promise.all([
+      prisma.bill.aggregate({
+        where: { companyId, supplierId: row.id, status: { not: "VOID" } },
+        _sum: { grandTotal: true, balanceDue: true }
+      }),
+      getSupplierJournalLines(companyId, row.id, row.name),
+    ]);
+
+    const netJournalDue = journalLines.reduce((sum, jl) => {
+      return sum + (Number(jl.credit) - Number(jl.debit));
+    }, 0);
     
     return {
       ...row,
       totalBusiness: Number(aggregate._sum?.grandTotal || 0),
-      outstanding: Number(aggregate._sum?.balanceDue || 0),
+      outstanding: Math.max(0, Number(aggregate._sum?.balanceDue || 0) + netJournalDue),
       lastBill: row.bills[0]?.date || null
     };
   }));
@@ -74,15 +113,22 @@ export const getSupplierById = async (req: Request, res: Response) => {
   });
   if (!row) return fail(res, 404, "SUPPLIER_NOT_FOUND", "Supplier not found");
 
-  const aggregate = await prisma.bill.aggregate({
-    where: { companyId, supplierId: row.id, status: { not: "VOID" } },
-    _sum: { grandTotal: true, balanceDue: true }
-  });
+  const [aggregate, journalLines] = await Promise.all([
+    prisma.bill.aggregate({
+      where: { companyId, supplierId: row.id, status: { not: "VOID" } },
+      _sum: { grandTotal: true, balanceDue: true }
+    }),
+    getSupplierJournalLines(companyId, row.id, row.name),
+  ]);
+
+  const netJournalDue = journalLines.reduce((sum, jl) => {
+    return sum + (Number(jl.credit) - Number(jl.debit));
+  }, 0);
 
   return ok(res, { 
     ...row, 
     totalBusiness: Number(aggregate._sum?.grandTotal || 0),
-    outstanding: Number(aggregate._sum?.balanceDue || 0)
+    outstanding: Math.max(0, Number(aggregate._sum?.balanceDue || 0) + netJournalDue)
   });
 };
 
@@ -98,7 +144,7 @@ export const getSupplierLedger = async (req: Request, res: Response) => {
   today.setHours(0, 0, 0, 0);
 
   /* ── Fetch all documents ── */
-  const [bills, debitNotes, standalonePayments] = await Promise.all([
+  const [bills, debitNotes, standalonePayments, journalLines] = await Promise.all([
     prisma.bill.findMany({
       where: { supplierId: supplier.id, companyId, status: { not: "VOID" } },
       include: { payments: { orderBy: { date: "asc" } } },
@@ -112,6 +158,7 @@ export const getSupplierLedger = async (req: Request, res: Response) => {
       where: { companyId, supplierId: supplier.id, billId: null },
       orderBy: { date: "asc" },
     }),
+    getSupplierJournalLines(companyId, supplier.id, supplier.name),
   ]);
 
   /* ── Build rows ── */
@@ -234,6 +281,39 @@ export const getSupplierLedger = async (req: Request, res: Response) => {
     });
   }
 
+  // Journal entries touching Accounts Payable for this supplier
+  for (const jLine of journalLines) {
+    const isCredit = Number(jLine.credit) > 0;
+    const amount = isCredit ? Number(jLine.credit) : Number(jLine.debit);
+
+    let cleanRemark = jLine.narration || "";
+    cleanRemark = cleanRemark.replace(/^\[Party:\s*.*?\]\s*/, "").replace(/^Party:\s*.*?\s*/, "").trim();
+    if (!cleanRemark) {
+      cleanRemark = jLine.entry.narration || "Journal Adjustment";
+    }
+
+    rows.push({
+      type: "Journal Entry",
+      number: jLine.entry.entryNo,
+      reference: cleanRemark,
+      issueDate: jLine.entry.date,
+      date: jLine.entry.date ? new Date(jLine.entry.date).toISOString().slice(0, 10) : "",
+      dueDate: null,
+      dueInDays: null,
+      paidDate: null,
+      paid: isCredit ? 0 : amount,
+      due: isCredit ? amount : -amount,
+      total: isCredit ? amount : -amount,
+      debit: isCredit ? 0 : amount,
+      credit: isCredit ? amount : 0,
+      refNo: jLine.entry.entryNo,
+      narration: cleanRemark,
+      status: jLine.entry.status,
+      sourceId: jLine.entry.id,
+      sourcePath: `/journal/${jLine.entry.id}/edit`,
+    });
+  }
+
   // Sort all rows by issueDate ascending
   rows.sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
 
@@ -246,9 +326,17 @@ export const getSupplierLedger = async (req: Request, res: Response) => {
       runningBalance = Number((runningBalance - row.paid).toFixed(2));
     } else if (row.type === "Purchase Debit Note") {
       runningBalance = Number((runningBalance + row.total).toFixed(2)); // total is already negative
+    } else if (row.type === "Journal Entry") {
+      runningBalance = Number((runningBalance + row.total).toFixed(2));
     }
     return { ...row, runningBalance };
   });
+
+  const netJournalDue = journalLines.reduce((sum, jl) => {
+    return sum + (Number(jl.credit) - Number(jl.debit));
+  }, 0);
+
+  const totalOutstanding = Math.max(0, bills.reduce((s, b) => s + Number(b.balanceDue), 0) + netJournalDue);
 
   return ok(res, {
     openingBalance: Number(supplier.openingBalance),
@@ -256,7 +344,7 @@ export const getSupplierLedger = async (req: Request, res: Response) => {
     closingBalance: runningBalance,
     totalInvoiced: bills.reduce((s, b) => s + Number(b.grandTotal), 0),
     totalPaid: bills.reduce((s, b) => s + Number(b.paidAmount), 0),
-    totalOutstanding: bills.reduce((s, b) => s + Number(b.balanceDue), 0),
+    totalOutstanding,
   });
 };
 

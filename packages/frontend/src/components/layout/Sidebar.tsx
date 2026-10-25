@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, LogOut, Plus, Building2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { NAV_ITEMS } from "@/lib/nav";
 import { usePermissionChecks } from "@/lib/permissions";
 import { useAppStore } from "@/stores/appStore";
@@ -41,8 +41,16 @@ export const Sidebar = () => {
   );
 
 
+  const navigate = useNavigate();
+  const logout = useAuthStore((state) => state.logout);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
   return (
-    <aside className="watermark-diagonal fixed left-0 top-0 z-30 h-screen w-sidebar overflow-y-auto bg-charcoal text-white">
+    <aside className="watermark-diagonal fixed left-0 top-0 z-30 h-screen w-sidebar overflow-y-auto bg-charcoal text-white flex flex-col">
       <div className="border-b border-white/10 px-5 pb-4 pt-5">
         <div className="mb-2 flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-full bg-gold font-display font-bold text-white text-xs">
@@ -111,13 +119,26 @@ export const Sidebar = () => {
         })}
       </nav>
 
-      <div className="mt-auto flex items-center gap-3 border-t border-white/10 px-4 py-3">
-        <div className="grid h-8 w-8 place-items-center rounded-full bg-gold text-xs font-semibold text-white">
-          {initials}
-        </div>
-          <div className="min-w-0">
-          <div className="truncate text-xs font-medium text-white">{fullName}</div>
-          <div className="text-[11px] text-muted">{currentCompany?.role ?? "Viewer"}</div>
+      <div className="mt-auto border-t border-white/10 p-3 bg-charcoal/90">
+        <div className="flex items-center justify-between rounded-lg p-2 hover:bg-white/5 transition-colors">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gold text-xs font-semibold text-white">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-xs font-medium text-white">{fullName}</div>
+              <div className="text-[11px] text-muted">{currentCompany?.role ?? "Viewer"}</div>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            title="Log out"
+            type="button"
+            className="flex items-center gap-1.5 rounded border border-ruby/30 bg-ruby/10 px-2 py-1 text-xs text-ruby hover:bg-ruby hover:text-white transition-all ml-2 shrink-0 cursor-pointer"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Logout</span>
+          </button>
         </div>
       </div>
     </aside>

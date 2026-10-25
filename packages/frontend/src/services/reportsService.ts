@@ -1,6 +1,7 @@
 import { api } from "@/lib/axios";
 
 export interface TrialBalanceAccountRow {
+  id?: number;
   code: string;
   name: string;
   type: string;
@@ -21,24 +22,24 @@ export interface ProfitLossResponse {
   from: string;
   to: string;
   compare: string;
-  revenue: { total: number; accounts: Array<{ code: string; name: string; amount: number }> };
-  cogs: { total: number; accounts: Array<{ code: string; name: string; amount: number }> };
+  revenue: { total: number; accounts: Array<{ id?: number; code: string; name: string; amount: number }> };
+  cogs: { total: number; accounts: Array<{ id?: number; code: string; name: string; amount: number }> };
   grossProfit: number;
-  expenses: { total: number; accounts: Array<{ code: string; name: string; amount: number }> };
+  expenses: { total: number; accounts: Array<{ id?: number; code: string; name: string; amount: number }> };
   netProfit: number;
 }
 
 export interface BalanceSheetResponse {
   asOf: string;
   assets: {
-    current: Array<{ name: string; amount: number }>;
-    nonCurrent: Array<{ name: string; amount: number }>;
+    current: Array<{ id?: number; code?: string; name: string; amount: number }>;
+    nonCurrent: Array<{ id?: number; code?: string; name: string; amount: number }>;
   };
   liabilities: {
-    current: Array<{ name: string; amount: number }>;
-    nonCurrent: Array<{ name: string; amount: number }>;
+    current: Array<{ id?: number; code?: string; name: string; amount: number }>;
+    nonCurrent: Array<{ id?: number; code?: string; name: string; amount: number }>;
   };
-  equity: Array<{ name: string; amount: number }>;
+  equity: Array<{ id?: number; code?: string; name: string; amount: number }>;
   totalAssets: number;
   totalLiabilities: number;
   totalEquity: number;
@@ -300,7 +301,7 @@ const previousDateString = (value: string) => {
 };
 
 export const reportsService = {
-  async getGeneralLedger(params: { accountId: number; from?: string; to?: string }) {
+  async getGeneralLedger(params: { accountId?: number | string; code?: string; from?: string; to?: string }) {
     const response = await api.get("/ledger", { params });
     return response.data.data;
   },
@@ -342,7 +343,7 @@ export const reportsService = {
     a.click();
     URL.revokeObjectURL(url);
   },
-  async getTrialBalance(params: { date?: string; compare?: string }) {
+  async getTrialBalance(params: { from?: string; to?: string; date?: string; compare?: string }) {
     const response = await api.get("/reports/trial-balance", { params });
     return response.data.data as TrialBalanceResponse;
   },

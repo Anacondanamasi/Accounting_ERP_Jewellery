@@ -30,9 +30,11 @@ import { supplierRoutes } from "./routes/supplierRoutes";
 import { systemRoutes } from "./routes/systemRoutes";
 import { taxRoutes } from "./routes/taxRoutes";
 import { settingsRoutes } from "./routes/settingsRoutes";
+import { financialYearRoutes } from "./routes/financialYearRoutes";
 import { companyRoutes, invitationRoutes } from "./routes/companyRoutes";
 import { productServiceRoutes } from "./routes/productServiceRoutes";
 import { settlementRoutes } from "./routes/settlementRoutes";
+import { paymentRoutes } from "./routes/paymentRoutes";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { requireCompanyContext } from "./middleware/companyContext";
 import { writeAuditMiddleware } from "./middleware/writeAuditMiddleware";
@@ -60,6 +62,7 @@ app.use(
       }
     },
     credentials: true,
+    exposedHeaders: ["Content-Disposition"],
   }),
 );
 
@@ -93,6 +96,7 @@ app.use("/api/v1/metal-rates", authMiddleware, requireCompanyContext, writeAudit
 app.use("/api/v1/karigar", authMiddleware, requireCompanyContext, writeAuditMiddleware, karigarRoutes);
 app.use("/api/v1/job-work", authMiddleware, requireCompanyContext, writeAuditMiddleware, jobWorkRoutes);
 app.use("/api/v1/accounts", authMiddleware, requireCompanyContext, writeAuditMiddleware, accountRoutes);
+app.use("/api/v1/financial-years", authMiddleware, requireCompanyContext, writeAuditMiddleware, financialYearRoutes);
 app.use("/api/v1/search", authMiddleware, requireCompanyContext, writeAuditMiddleware, searchRoutes);
 app.use("/api/v1/schemes", authMiddleware, requireCompanyContext, writeAuditMiddleware, schemeRoutes);
 app.use("/api/v1/employees", authMiddleware, requireCompanyContext, writeAuditMiddleware, employeeRoutes);
@@ -100,6 +104,7 @@ app.use("/api/v1/payroll", authMiddleware, requireCompanyContext, writeAuditMidd
 app.use("/api/v1", authMiddleware, requireCompanyContext, writeAuditMiddleware, noteRoutes);
 app.use("/api/v1", authMiddleware, requireCompanyContext, writeAuditMiddleware, systemRoutes);
 app.use("/api/v1/product-services", authMiddleware, requireCompanyContext, writeAuditMiddleware, productServiceRoutes);
+app.use("/api/v1/payments", authMiddleware, requireCompanyContext, writeAuditMiddleware, paymentRoutes);
 app.use("/api/v1", settlementRoutes);
 
 app.use(notFoundHandler);

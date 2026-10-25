@@ -20,7 +20,7 @@ import { dashboardService } from "@/services/dashboardService";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { KPICard } from "@/components/shared/KPICard";
 import { DataTable } from "@/components/shared/DataTable";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatDate } from "@/lib/formatters";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useAuthStore } from "@/stores/authStore";
 import { usePermissionChecks } from "@/lib/permissions";
@@ -36,13 +36,13 @@ const columnHelper = createColumnHelper<{
 }>();
 
 export const DashboardPage = () => {
+  const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["dashboard-summary"],
+    queryKey: ["dashboard-summary", currentCompanyId],
     queryFn: dashboardService.getSummary,
   });
 
   const companies = useAuthStore((state) => state.companies);
-  const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
   const currentCompany = useMemo(
     () => companies.find((c) => c.id === currentCompanyId),
     [companies, currentCompanyId],
@@ -80,7 +80,7 @@ export const DashboardPage = () => {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-5">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
         <KPICard title="Revenue MTD" value={formatCurrency(data?.revenueMtd ?? 0)} trend="+12.4%" trendDirection="up" icon={<ArrowUpRight className="h-4 w-4 text-emerald" />} />
         <KPICard title="Receivables" value={formatCurrency(data?.receivables ?? 0)} />
         <KPICard title="Payables" value={formatCurrency(data?.payables ?? 0)} />
@@ -123,16 +123,49 @@ export const DashboardPage = () => {
 
       <DataTable
         columns={[
-          columnHelper.accessor("date", { header: "Date", cell: (info) => info.getValue() }),
-          columnHelper.accessor("type", { header: "Type", cell: (info) => info.getValue() }),
-          columnHelper.accessor("narration", { header: "Narration", cell: (info) => info.getValue() }),
+          columnHelper.accessor("date", {
+            header: "Date",
+            cell: (info) => (
+              <span className="font-mono font-medium text-slate-700 whitespace-nowrap">
+                {formatDate(info.getValue())}
+              </span>
+            ),
+          }),
+          columnHelper.accessor("type", {
+            header: "Type",
+            cell: (info) => {
+              const type = info.getValue();
+              const badgeClass =
+                type === "Sales"
+                  ? "bg-emerald/10 text-emerald"
+                  : type === "Purchase"
+                    ? "bg-ruby/10 text-ruby"
+                    : "bg-sapphire/10 text-sapphire";
+              return (
+                <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
+                  {type}
+                </span>
+              );
+            },
+          }),
+          columnHelper.accessor("narration", {
+            header: "Narration",
+            cell: (info) => <span className="font-medium text-charcoal">{info.getValue()}</span>,
+          }),
           columnHelper.accessor("amount", {
             header: "Amount",
-            cell: (info) => <span className="font-mono text-right">{formatCurrency(info.getValue())}</span>,
+            cell: (info) => {
+              const amount = info.getValue();
+              return (
+                <span className={`font-mono text-right font-semibold ${amount >= 0 ? "text-emerald" : "text-ruby"}`}>
+                  {formatCurrency(amount)}
+                </span>
+              );
+            },
           }),
           columnHelper.accessor("balance", {
             header: "Balance",
-            cell: (info) => <span className="font-mono text-right">{formatCurrency(info.getValue())}</span>,
+            cell: (info) => <span className="font-mono text-right text-muted">{formatCurrency(info.getValue())}</span>,
           }),
         ]}
         data={data?.recentTransactions ?? []}

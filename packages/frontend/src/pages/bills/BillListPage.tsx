@@ -76,7 +76,7 @@ export const BillListPage = () => {
         columns={[
           col.accessor("billNo", {
             header: "Bill No",
-            cell: (info) => <Link className="text-sapphire hover:underline" to={`/bills/${info.row.original.id}`}>{info.getValue()}</Link>,
+            cell: (info) => <Link className="text-sapphire hover:underline" to={`/bills/${info.row.original.id}/edit`}>{info.getValue()}</Link>,
           }),
           col.accessor("date", { 
             header: "Date",
@@ -103,7 +103,7 @@ export const BillListPage = () => {
         ]}
         data={rows}
         loading={isLoading}
-        onRowClick={(row) => navigate(`/bills/${row.id}`)}
+        onRowClick={(row) => navigate(`/bills/${row.id}/edit`)}
       />
       <button className="h-9 rounded-btn border border-border px-4 text-sm" onClick={() => void refetch()} type="button">
         Refresh

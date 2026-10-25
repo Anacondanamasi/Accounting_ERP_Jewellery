@@ -7,18 +7,38 @@ import { getCompanyId } from "../../lib/requestUtils";
 export const getGeneralLedger = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
   
-  const accountId = Number(req.query.accountId);
-  if (isNaN(accountId)) return fail(res, 400, "ACCOUNT_REQUIRED", "Valid accountId query parameter is required");
-  
+  const rawIdOrCode = String(req.query.accountId || req.query.code || "");
+  if (!rawIdOrCode) {
+    return fail(res, 400, "ACCOUNT_REQUIRED", "Valid accountId or code query parameter is required");
+  }
+
+  const numVal = Number(rawIdOrCode);
+
+  // Find by ID first, or fallback to Code
+  let account = !isNaN(numVal)
+    ? await prisma.account.findFirst({
+        where: { id: numVal, companyId },
+      })
+    : null;
+
+  if (!account) {
+    account = await prisma.account.findFirst({
+      where: { code: rawIdOrCode, companyId },
+    });
+  }
+
+  if (!account) return fail(res, 404, "ACCOUNT_NOT_FOUND", "Account not found");
+
+  const accountId = account.id;
+
   const from = req.query.from ? new Date(String(req.query.from)) : undefined;
-  const to = req.query.to ? new Date(String(req.query.to)) : undefined;
+  let to = req.query.to ? new Date(String(req.query.to)) : undefined;
+  if (to && !String(req.query.to).includes("T")) {
+    to.setHours(23, 59, 59, 999);
+  }
+
   const dateFilter =
     from && to ? { gte: from, lte: to } : from ? { gte: from } : to ? { lte: to } : undefined;
-
-  const account = await prisma.account.findFirst({
-    where: { id: accountId, companyId }
-  });
-  if (!account) return fail(res, 404, "ACCOUNT_NOT_FOUND", "Account not found");
 
   const openingLines = await prisma.journalLine.findMany({
     where: {
@@ -51,6 +71,9 @@ export const getGeneralLedger = async (req: Request, res: Response) => {
   });
 
   const transactions = lines.map(line => ({
+    id: line.entry.id,
+    entryId: line.entry.id,
+    voucherType: line.entry.type,
     date: line.entry.date,
     voucherNo: line.entry.entryNo,
     narration: line.narration || line.entry.narration,
@@ -75,6 +98,13 @@ export const getGeneralLedger = async (req: Request, res: Response) => {
   });
 
   return ok(res, {
+    account: {
+      id: account.id,
+      code: account.code,
+      name: account.name,
+      type: account.type,
+      group: account.group,
+    },
     openingBalance,
     transactions: withRunning,
     closingBalance: runningBalance,

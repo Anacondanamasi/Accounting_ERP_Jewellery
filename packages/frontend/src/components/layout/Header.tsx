@@ -1,6 +1,6 @@
-import { Bell, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Bell, Search, LogOut, User, Building2 } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { api } from "@/lib/axios";
 import { useAppStore } from "@/stores/appStore";
@@ -32,6 +32,27 @@ export const Header = () => {
     () => companies.find((company) => company.id === currentCompanyId),
     [companies, currentCompanyId],
   );
+
+  const navigate = useNavigate();
+  const logout = useAuthStore((state) => state.logout);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleHeaderLogout = () => {
+    setProfileMenuOpen(false);
+    logout();
+    navigate("/login");
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const initials = useMemo(() => {
     if (!user?.fullName) return "??";
@@ -119,8 +140,63 @@ export const Header = () => {
             </span>
           )}
         </button>
-        <div className="grid h-8 w-8 place-items-center rounded-full bg-gold text-xs font-semibold text-white">
-          {initials}
+        <div className="relative" ref={profileMenuRef}>
+          <button
+            onClick={() => setProfileMenuOpen((prev) => !prev)}
+            type="button"
+            className="grid h-8 w-8 place-items-center rounded-full bg-gold text-xs font-semibold text-white cursor-pointer hover:ring-2 hover:ring-gold/50 transition-all"
+            title="User account menu"
+          >
+            {initials}
+          </button>
+
+          {profileMenuOpen && (
+            <div className="absolute right-0 mt-2 w-56 rounded-card border border-border bg-white shadow-modal z-50 py-1 animate-in fade-in zoom-in-95 duration-150">
+              <div className="border-b border-border px-4 py-2.5">
+                <div className="font-medium text-xs text-charcoal truncate">{user?.fullName || "User"}</div>
+                <div className="text-[11px] text-muted truncate">{user?.email}</div>
+                <div className="mt-1 inline-block rounded bg-gold/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gold">
+                  {currentCompany?.role ?? "viewer"}
+                </div>
+              </div>
+
+              <div className="py-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    navigate("/settings/company");
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-xs text-charcoal hover:bg-slate-50 transition-colors"
+                >
+                  <Building2 className="h-4 w-4 text-muted" />
+                  Organisation Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    navigate("/settings/team");
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-xs text-charcoal hover:bg-slate-50 transition-colors"
+                >
+                  <User className="h-4 w-4 text-muted" />
+                  Team & Permissions
+                </button>
+              </div>
+
+              <div className="border-t border-border pt-1">
+                <button
+                  type="button"
+                  onClick={handleHeaderLogout}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-xs font-medium text-ruby hover:bg-ruby/5 transition-colors"
+                >
+                  <LogOut className="h-4 w-4 text-ruby" />
+                  Log Out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
