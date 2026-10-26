@@ -144,6 +144,7 @@ export const NAV_ITEMS: NavGroup[] = [
     group: "REPORTS",
     items: [
       { label: "Report Centre", path: "/reports", icon: BarChart2 },
+      { label: "Chart of Accounts", path: "/ledger", icon: BookOpen },
       { label: "Custom Reports", path: "/reports/custom", icon: Settings2 },
       { label: "Receivables Ageing", path: "/ageing/receivables", icon: Clock },
       { label: "Payables Ageing", path: "/ageing/payables", icon: Clock },
@@ -159,7 +160,6 @@ export const NAV_ITEMS: NavGroup[] = [
       { label: "Audit Log", path: "/settings/audit", icon: Activity },
       { label: "Gold Schemes", path: "/schemes", icon: Star },
       { label: "Scheme Members", path: "/schemes/members", icon: Users },
-      { label: "Chart of Accounts", path: "/ledger", icon: BookOpen },
     ],
   },
 ];
