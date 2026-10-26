@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,8 @@ import {
   FileEdit,
   ShieldAlert,
   CheckCircle2,
+  FileText,
+  History,
 } from "lucide-react";
 import { invoiceService } from "@/services/invoiceService";
 import { RecordPaymentModal } from "./RecordPaymentModal";
@@ -18,11 +20,15 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { LinkedSettlementsPanel } from "@/components/shared/LinkedSettlementsPanel";
 import { GstTaxInvoicePaper } from "@/components/invoices/GstTaxInvoicePaper";
 import { downloadElementAsPdf } from "@/lib/pdfExport";
+import { TransactionJournalModal } from "@/components/shared/TransactionJournalModal";
+import { EntityHistoryDrawer } from "@/components/shared/EntityHistoryDrawer";
 
 export const InvoiceViewPage = () => {
   const navigate = useNavigate();
   const { id = "" } = useParams();
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const paperRef = useRef<HTMLDivElement>(null);
 
@@ -30,6 +36,22 @@ export const InvoiceViewPage = () => {
     queryKey: ["invoice", id],
     queryFn: () => invoiceService.getById(Number(id)),
   });
+
+  // Keyboard shortcuts: Ctrl/Cmd+J (Journal), Alt+H (History)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setJournalOpen((prev) => !prev);
+      }
+      if (e.altKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        setHistoryOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const postMutation = useMutation({
     mutationFn: () => invoiceService.post(Number(id)),
@@ -100,6 +122,28 @@ export const InvoiceViewPage = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Transaction Journal (Ctrl+J) */}
+          <button
+            onClick={() => setJournalOpen(true)}
+            type="button"
+            className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-sapphire/30 bg-sapphire/5 px-3 text-xs font-semibold text-sapphire hover:bg-sapphire/15 transition-colors"
+            title="View double-entry ledger lines (Ctrl+J)"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Journal (Ctrl+J)
+          </button>
+
+          {/* Audit History (Alt+H) */}
+          <button
+            onClick={() => setHistoryOpen(true)}
+            type="button"
+            className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-border bg-white px-3 text-xs font-semibold text-charcoal hover:bg-slate-50 transition-colors"
+            title="View revision timeline & field diffs (Alt+H)"
+          >
+            <History className="h-3.5 w-3.5" />
+            History
+          </button>
+
           <button
             onClick={handlePrint}
             type="button"
@@ -145,17 +189,6 @@ export const InvoiceViewPage = () => {
             Duplicate
           </button>
 
-          {false && (
-            <button
-              onClick={() => postMutation.mutate()}
-              type="button"
-              className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-emerald/40 bg-emerald/10 px-3 text-xs font-bold text-emerald hover:bg-emerald/20 transition-colors"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Post
-            </button>
-          )}
-
           {data.status !== "VOID" && (
             <button
               onClick={() => {
@@ -199,6 +232,27 @@ export const InvoiceViewPage = () => {
         onClose={() => setPaymentOpen(false)}
         onSaved={() => void refetch()}
         open={paymentOpen}
+      />
+
+      {/* Transaction Journal Modal (Ctrl+J) */}
+      <TransactionJournalModal
+        isOpen={journalOpen}
+        onClose={() => setJournalOpen(false)}
+        type="INVOICE"
+        id={data.id}
+        onOpenHistory={() => setHistoryOpen(true)}
+      />
+
+      {/* Entity History Drawer (Alt+H) */}
+      <EntityHistoryDrawer
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        entityType="Invoice"
+        entityId={data.id}
+        entityNumber={data.invoiceNo}
+        onOpenJournalAtRevision={(rev) => {
+          setJournalOpen(true);
+        }}
       />
     </div>
   );

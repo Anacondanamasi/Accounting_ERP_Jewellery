@@ -50,6 +50,7 @@ import { BalanceSheetPage } from "@/pages/reports/BalanceSheetPage";
 import { CashFlowPage } from "@/pages/reports/CashFlowPage";
 import { ReportCentrePage } from "@/pages/reports/ReportCentrePage";
 import { ReportViewerPage } from "@/pages/reports/ReportViewerPage";
+import { JournalReportPage } from "@/pages/reports/JournalReportPage";
 import { CompanySettingsPage } from "@/pages/settings/CompanySettingsPage";
 import { TeamSettingsPage } from "@/pages/settings/TeamSettingsPage";
 import { IntegrationsPage } from "@/pages/settings/IntegrationsPage";
@@ -205,6 +206,7 @@ export const router = createBrowserRouter([
       { path: "payroll/salary", element: <SalaryPage /> },
       { path: "payroll/loans", element: <LoansAdvancesPage /> },
       { path: "reports", element: <ReportCentrePage /> },
+      { path: "reports/journal", element: <JournalReportPage /> },
       { path: "reports/custom", element: <ReportViewerPage /> },
       { path: "settings/company", element: <CompanySettingsPage /> },
       { path: "settings/users", element: <TeamSettingsPage /> },

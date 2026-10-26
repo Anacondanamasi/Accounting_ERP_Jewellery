@@ -10,6 +10,7 @@ import { computeJewelleryTotals, makeDocumentNumber, splitGst } from "../../lib/
 import { evaluatePlaceOfSupply, generateGstJournalPosting, type DocumentTaxSummary, round2 } from "../../lib/gst";
 import { prisma } from "../../lib/prisma";
 import { getCompanyId, getActor } from "../../lib/requestUtils";
+import { AuditService } from "../../services/audit/auditService";
 
 const lineSchema = z.object({
   sku: z.string().optional().nullable().default(""),
@@ -234,6 +235,19 @@ export const createBill = async (req: Request, res: Response) => {
     });
 
     await syncBillJournalPosting(tx, companyId, createdBill, actor);
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "bill.created",
+      entityType: "Bill",
+      entityId: createdBill.id,
+      entityNumber: createdBill.billNo,
+      entityDate: createdBill.date,
+      amountAfter: Number(createdBill.grandTotal),
+      after: createdBill as any,
+    });
+
     return createdBill;
   });
 
@@ -292,6 +306,22 @@ export const updateBill = async (req: Request, res: Response) => {
 
     // Atomically replace previous journal posting
     await syncBillJournalPosting(tx, companyId, updatedBill, actor);
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "bill.updated",
+      entityType: "Bill",
+      entityId: updatedBill.id,
+      entityNumber: updatedBill.billNo,
+      entityDate: updatedBill.date,
+      amountBefore: Number(existing.grandTotal),
+      amountAfter: Number(updatedBill.grandTotal),
+      before: existing as any,
+      after: updatedBill as any,
+      reason: req.body?.reason ? String(req.body.reason) : undefined,
+    });
+
     return updatedBill;
   });
 
@@ -339,6 +369,20 @@ export const deleteBill = async (req: Request, res: Response) => {
     });
     await tx.billItem.deleteMany({ where: { billId: bill.id, companyId } });
     await tx.bill.delete({ where: { id: bill.id } });
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "bill.deleted",
+      entityType: "Bill",
+      entityId: bill.id,
+      entityNumber: bill.billNo,
+      entityDate: bill.date,
+      amountBefore: Number(bill.grandTotal),
+      amountAfter: 0,
+      before: bill as any,
+      reason: req.body?.reason ? String(req.body.reason) : "Bill deleted by user",
+    });
   });
 
   return ok(res, true, "Bill deleted");

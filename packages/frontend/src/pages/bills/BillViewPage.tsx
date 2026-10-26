@@ -1,23 +1,44 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { FileText, History } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency, formatWeight } from "@/lib/formatters";
 import { billService } from "@/services/billService";
 import { LinkedSettlementsPanel } from "@/components/shared/LinkedSettlementsPanel";
+import { TransactionJournalModal } from "@/components/shared/TransactionJournalModal";
+import { EntityHistoryDrawer } from "@/components/shared/EntityHistoryDrawer";
 
 export const BillViewPage = () => {
   const navigate = useNavigate();
   const { id = "" } = useParams();
   const [showPayment, setShowPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(0);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["bill", id],
     queryFn: () => billService.getById(id),
   });
+
+  // Keyboard shortcuts: Ctrl/Cmd+J (Journal), Alt+H (History)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setJournalOpen((prev) => !prev);
+      }
+      if (e.altKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        setHistoryOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const postMutation = useMutation({
     mutationFn: () => billService.post(id),
@@ -66,13 +87,34 @@ export const BillViewPage = () => {
         title={data.billNo}
         subtitle={`Supplier: ${data.supplierName}`}
         actions={
-          <>
-            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => navigate(`/bills/${id}/edit`)} type="button">Edit</button>
-            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => duplicateMutation.mutate()} type="button">Duplicate</button>
-            
-            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => setShowPayment((prev) => !prev)} type="button">Record Payment</button>
-            <button className="h-10 rounded-btn bg-ruby px-4 text-sm text-white" onClick={() => voidMutation.mutate()} type="button">Void</button>
-          </>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setJournalOpen(true)}
+              type="button"
+              className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-sapphire/30 bg-sapphire/5 px-3 text-xs font-semibold text-sapphire hover:bg-sapphire/15 transition-colors"
+              title="View double-entry ledger lines (Ctrl+J)"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Journal (Ctrl+J)
+            </button>
+
+            <button
+              onClick={() => setHistoryOpen(true)}
+              type="button"
+              className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-border bg-white px-3 text-xs font-semibold text-charcoal hover:bg-slate-50 transition-colors"
+              title="View audit history (Alt+H)"
+            >
+              <History className="h-3.5 w-3.5" />
+              History
+            </button>
+
+            <button className="h-9 rounded-btn border border-border px-3 text-xs" onClick={() => navigate(`/bills/${id}/edit`)} type="button">Edit</button>
+            <button className="h-9 rounded-btn border border-border px-3 text-xs" onClick={() => duplicateMutation.mutate()} type="button">Duplicate</button>
+            <button className="h-9 rounded-btn border border-border px-3 text-xs" onClick={() => setShowPayment((prev) => !prev)} type="button">Record Payment</button>
+            {data.status !== "VOID" && (
+              <button className="h-9 rounded-btn bg-ruby px-3 text-xs text-white" onClick={() => voidMutation.mutate()} type="button">Void</button>
+            )}
+          </div>
         }
       />
 
@@ -155,6 +197,25 @@ export const BillViewPage = () => {
         partyName={data.supplierName ?? data.supplier?.name ?? "Supplier"}
         status={data.status}
         onSettled={() => void refetch()}
+      />
+
+      {/* Transaction Journal Modal (Ctrl+J) */}
+      <TransactionJournalModal
+        isOpen={journalOpen}
+        onClose={() => setJournalOpen(false)}
+        type="BILL"
+        id={data.id}
+        onOpenHistory={() => setHistoryOpen(true)}
+      />
+
+      {/* Entity History Drawer (Alt+H) */}
+      <EntityHistoryDrawer
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        entityType="Bill"
+        entityId={data.id}
+        entityNumber={data.billNo}
+        onOpenJournalAtRevision={(rev) => setJournalOpen(true)}
       />
     </div>
   );

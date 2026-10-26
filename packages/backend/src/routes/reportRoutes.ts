@@ -9,10 +9,12 @@ import {
   getProfitLoss,
   getTrialBalance,
 } from "../controllers/reports/financialController";
+import { getBulkJournalReport } from "../controllers/journal/transactionJournalController";
 
 export const reportRoutes = Router();
 reportRoutes.use(authMiddleware);
 
+reportRoutes.get("/journal", getBulkJournalReport);
 reportRoutes.get("/ageing/receivables", getReceivablesAgeing);
 reportRoutes.get("/ageing/receivables/export", getReceivablesAgeing); // ?export=csv
 reportRoutes.get("/ageing/payables", getPayablesAgeing);

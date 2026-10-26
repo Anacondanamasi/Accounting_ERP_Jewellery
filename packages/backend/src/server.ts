@@ -35,6 +35,8 @@ import { companyRoutes, invitationRoutes } from "./routes/companyRoutes";
 import { productServiceRoutes } from "./routes/productServiceRoutes";
 import { settlementRoutes } from "./routes/settlementRoutes";
 import { paymentRoutes } from "./routes/paymentRoutes";
+import { auditRoutes } from "./routes/auditRoutes";
+import { transactionRoutes } from "./routes/transactionRoutes";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { requireCompanyContext } from "./middleware/companyContext";
 import { writeAuditMiddleware } from "./middleware/writeAuditMiddleware";
@@ -105,6 +107,8 @@ app.use("/api/v1", authMiddleware, requireCompanyContext, writeAuditMiddleware, 
 app.use("/api/v1", authMiddleware, requireCompanyContext, writeAuditMiddleware, systemRoutes);
 app.use("/api/v1/product-services", authMiddleware, requireCompanyContext, writeAuditMiddleware, productServiceRoutes);
 app.use("/api/v1/payments", authMiddleware, requireCompanyContext, writeAuditMiddleware, paymentRoutes);
+app.use("/api/v1/audit", auditRoutes);
+app.use("/api/v1/transactions", transactionRoutes);
 app.use("/api/v1", settlementRoutes);
 
 app.use(notFoundHandler);

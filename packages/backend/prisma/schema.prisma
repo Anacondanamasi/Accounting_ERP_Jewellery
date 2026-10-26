@@ -126,6 +126,42 @@ model AuditLog {
   createdBy  String
 }
 
+model AuditEvent {
+  id              String   @id
+  occurredAt      DateTime @default(now())
+  companyId       Int
+  actorType       String   @default("USER") // USER | SYSTEM | API | SUPPORT
+  actorId         String
+  actorName       String
+  actorRole       String?
+  ipAddress       String?
+  userAgent       String?
+  sessionId       String?
+  requestId       String?
+  source          String   @default("UI") // UI | API | IMPORT | JOB | MIGRATION
+  eventType       String   // e.g. "invoice.created", "invoice.updated", "invoice.voided", "auth.failed"
+  entityType      String   // "Invoice", "Bill", "Expense", "Customer", "Account", "Setting", etc.
+  entityId        String
+  entityNumber    String?
+  entityDate      DateTime?
+  amountBefore    Float?
+  amountAfter     Float?
+  summary         String
+  changesJson     String?
+  revisionBefore  Int?
+  revisionAfter   Int?
+  reason          String?
+  causedByEventId String?
+  prevHash        String
+  hash            String
+  createdAt       DateTime @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([companyId, entityType, entityId, occurredAt])
+  @@index([companyId, actorId, occurredAt])
+  @@index([companyId, eventType, occurredAt])
+}
+
 model Notification {
   id Int @id @default(autoincrement())
   companyId  Int

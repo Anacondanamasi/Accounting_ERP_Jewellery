@@ -11,6 +11,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import { getCompanyId, getActor } from "../../lib/requestUtils";
 import { generateInvoicePdf } from "../../services/invoicePdfService";
+import { AuditService } from "../../services/audit/auditService";
 
 const invoiceInclude = {
   customer: true,
@@ -257,6 +258,19 @@ export const createInvoice = async (req: Request, res: Response) => {
     });
 
     await syncInvoiceJournalPosting(tx, companyId, createdInvoice, actor);
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "invoice.created",
+      entityType: "Invoice",
+      entityId: createdInvoice.id,
+      entityNumber: createdInvoice.invoiceNo,
+      entityDate: createdInvoice.date,
+      amountAfter: Number(createdInvoice.grandTotal),
+      after: createdInvoice as any,
+    });
+
     return createdInvoice;
   });
 
@@ -321,6 +335,22 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     // Atomically replace previous journal posting with recalculation
     await syncInvoiceJournalPosting(tx, companyId, updatedInvoice, actor);
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "invoice.updated",
+      entityType: "Invoice",
+      entityId: updatedInvoice.id,
+      entityNumber: updatedInvoice.invoiceNo,
+      entityDate: updatedInvoice.date,
+      amountBefore: Number(existing.grandTotal),
+      amountAfter: Number(updatedInvoice.grandTotal),
+      before: existing as any,
+      after: updatedInvoice as any,
+      reason: req.body.reason ? String(req.body.reason) : undefined,
+    });
+
     return updatedInvoice;
   });
 
@@ -369,6 +399,20 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     });
     await tx.invoiceItem.deleteMany({ where: { invoiceId: invoice.id, companyId } });
     await tx.invoice.delete({ where: { id: invoice.id } });
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "invoice.deleted",
+      entityType: "Invoice",
+      entityId: invoice.id,
+      entityNumber: invoice.invoiceNo,
+      entityDate: invoice.date,
+      amountBefore: Number(invoice.grandTotal),
+      amountAfter: 0,
+      before: invoice as any,
+      reason: req.body?.reason ? String(req.body.reason) : "Invoice deleted by user",
+    });
   });
 
   return ok(res, true, "Invoice deleted");
@@ -393,6 +437,22 @@ export const voidInvoice = async (req: Request, res: Response) => {
       date: new Date(),
       narrationPrefix: "Invoice void",
     });
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "invoice.voided",
+      entityType: "Invoice",
+      entityId: invoice.id,
+      entityNumber: invoice.invoiceNo,
+      entityDate: invoice.date,
+      amountBefore: Number(invoice.grandTotal),
+      amountAfter: 0,
+      before: invoice as any,
+      after: row as any,
+      reason: req.body?.reason ? String(req.body.reason) : "Invoice voided by user",
+    });
+
     return row;
   });
 
@@ -499,6 +559,35 @@ export const recordPayment = async (req: Request, res: Response) => {
         { accountId: cashBankAccountId, debit: amount, narration: `Receipt via ${mode}` },
         { accountId: accounts.receivableId, credit: amount, narration: `Receipt against ${invoice.invoiceNo}` },
       ],
+    });
+
+    const paymentAudit = await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "payment.created",
+      entityType: "Payment",
+      entityId: payment.id,
+      entityNumber: payment.reference || `REC-${payment.id}`,
+      entityDate: payment.date,
+      amountAfter: amount,
+      after: payment as any,
+      summary: `${actor} recorded payment of ₹${amount.toLocaleString("en-IN")} via ${mode} against ${invoice.invoiceNo}`,
+    });
+
+    await AuditService.recordEvent(tx, {
+      companyId,
+      actor: { id: actor, name: actor, type: "USER" },
+      eventType: "invoice.updated",
+      entityType: "Invoice",
+      entityId: invoice.id,
+      entityNumber: invoice.invoiceNo,
+      entityDate: invoice.date,
+      amountBefore: Number(invoice.balanceDue),
+      amountAfter: newBalanceDue,
+      before: { paidAmount: invoice.paidAmount, balanceDue: invoice.balanceDue, status: invoice.status },
+      after: { paidAmount: newPaidAmount, balanceDue: newBalanceDue, status: row.status },
+      causedByEventId: paymentAudit.id,
+      summary: `Indirect edit: Invoice ${invoice.invoiceNo} balance updated by Payment #${payment.id}`,
     });
 
     return row;

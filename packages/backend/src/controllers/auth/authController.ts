@@ -5,6 +5,7 @@ import { loginSchema } from "@jewelledger/shared";
 import { env } from "../../lib/env";
 import { fail, ok } from "../../lib/apiResponse";
 import { prisma } from "../../lib/prisma";
+import { AuditService } from "../../services/audit/auditService";
 
 export const login = async (req: Request, res: Response) => {
   const parsed = loginSchema.safeParse(req.body);
@@ -29,6 +30,16 @@ export const login = async (req: Request, res: Response) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       console.log(`Password mismatch for: ${email}`);
+      await AuditService.recordEvent(prisma, {
+        companyId: user.companyId,
+        actor: { id: user.id, name: user.fullName || email, role: user.role, type: "USER" },
+        eventType: "auth.failed_login",
+        entityType: "UserSession",
+        entityId: user.id,
+        summary: `Failed sign-in attempt for ${email} (incorrect password)`,
+        ipAddress: req.ip || req.socket?.remoteAddress || undefined,
+        userAgent: req.get("user-agent") || undefined,
+      });
       return fail(res, 401, "INVALID_CREDENTIALS", "Invalid email or password");
     }
 
@@ -40,9 +51,20 @@ export const login = async (req: Request, res: Response) => {
       { sub: user.id, companyId: user.companyId, role: user.role },
       env.JWT_SECRET,
       {
-        expiresIn: "1d", // Increased to 1d for better dev experience
+        expiresIn: "1d",
       },
     );
+
+    await AuditService.recordEvent(prisma, {
+      companyId: user.companyId,
+      actor: { id: user.id, name: user.fullName || email, role: user.role, type: "USER" },
+      eventType: "auth.login_success",
+      entityType: "UserSession",
+      entityId: user.id,
+      summary: `User ${user.fullName || email} (${user.role}) successfully signed in`,
+      ipAddress: req.ip || req.socket?.remoteAddress || undefined,
+      userAgent: req.get("user-agent") || undefined,
+    });
 
     return ok(res, {
       accessToken,
@@ -79,7 +101,7 @@ export const me = async (req: Request, res: Response) => {
       role: user.role,
       companyId: user.companyId,
     },
-    permissions: ["*"], // Simplify for now
+    permissions: ["*"],
     companyId: user.companyId,
   });
 };
