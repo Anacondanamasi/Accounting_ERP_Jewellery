@@ -141,7 +141,7 @@ export const SchemeMembersPage = () => {
             }),
           ]}
           data={members}
-          isLoading={isLoading}
+          loading={isLoading}
         />
       </div>
 

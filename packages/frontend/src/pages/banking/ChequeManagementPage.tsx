@@ -63,10 +63,10 @@ export const ChequeManagementPage = () => {
       .map((row) => {
         const outAmount = Number(row.debit ?? 0);
         const inAmount = Number(row.credit ?? 0);
-        const flow = inAmount > 0 ? "IN" : "OUT";
+        const flow: "IN" | "OUT" = inAmount > 0 ? "IN" : "OUT";
         const amount = inAmount > 0 ? inAmount : outAmount;
         return {
-          id: row.id,
+          id: Number(row.id),
           date: row.date,
           reference: row.reference,
           narration: row.narration,

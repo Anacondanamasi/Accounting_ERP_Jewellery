@@ -2,11 +2,11 @@ import { api } from "@/lib/axios";
 
 export const settlementService = {
   /** Get all active settlements on an invoice or bill */
-  getSettlements: (targetType: "invoice" | "bill", targetId: number | string) =>
+  getSettlements: (targetType: "invoice" | "bill" | "note", targetId: number | string) =>
     api.get(`/settlements/${targetType}/${targetId}`).then((r) => r.data.data),
 
   /** Full outstanding summary with linked settlements */
-  getSummary: (targetType: "invoice" | "bill", targetId: number | string) =>
+  getSummary: (targetType: "invoice" | "bill" | "note", targetId: number | string) =>
     api.get(`/settlements/summary/${targetType}/${targetId}`).then((r) => r.data.data),
 
   /** Open invoices or bills for a party (for the apply-note modal) */

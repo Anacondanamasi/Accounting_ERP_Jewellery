@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Save, X, ArrowLeft, Trash2, Plus } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useNavigate, useParams } from "react-router-dom";
@@ -26,6 +26,9 @@ const expenseFormSchema = z.object({
     z.number().positive().nullable().optional()
   ),
   narration: z.string().optional(),
+  isTaxInclusive: z.boolean().default(false),
+  gstRate: z.coerce.number().default(0),
+  itcEligibility: z.string().default("ELIGIBLE"),
 });
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;

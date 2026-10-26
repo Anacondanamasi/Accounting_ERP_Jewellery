@@ -1,7 +1,7 @@
 import { api } from "@/lib/axios";
 
 export interface BankAccount {
-  id: number;
+  id: number | string;
   bankName: string;
   accountName: string;
   accountNoMasked: string;
@@ -14,7 +14,7 @@ export interface BankAccount {
 }
 
 export interface BankTransaction {
-  id: number;
+  id: number | string;
   bankAccountId: number;
   date: string;
   narration: string;
@@ -60,7 +60,7 @@ export const bankingService = {
     const response = await api.get("/bank-accounts");
     return response.data.data as BankAccount[];
   },
-  async getAccount(id: number) {
+  async getAccount(id: number | string) {
     const response = await api.get(`/bank-accounts/${id}`);
     return response.data.data as BankAccount;
   },
@@ -68,34 +68,34 @@ export const bankingService = {
     const response = await api.post("/bank-accounts", payload);
     return response.data.data as BankAccount;
   },
-  async updateAccount(id: number, payload: Record<string, unknown>) {
+  async updateAccount(id: number | string, payload: Record<string, unknown>) {
     const response = await api.put(`/bank-accounts/${id}`, payload);
     return response.data.data as BankAccount;
   },
   async listTransactions(
-    id: number,
+    id: number | string,
     params: { from?: string; to?: string; reconciled?: string } = {},
   ) {
     const response = await api.get(`/bank-accounts/${id}/transactions`, { params });
     return response.data.data as BankTransaction[];
   },
-  async createTransaction(id: number, payload: Record<string, unknown>) {
+  async createTransaction(id: number | string, payload: Record<string, unknown>) {
     const response = await api.post(`/bank-accounts/${id}/transactions`, payload);
     return response.data.data as BankTransaction;
   },
-  async importStatement(id: number, payload: Record<string, unknown>) {
+  async importStatement(id: number | string, payload: Record<string, unknown>) {
     const response = await api.post(`/bank-accounts/${id}/import`, payload);
     return response.data.data as { importedRows: number; duplicatesSkipped: number; batchId: number };
   },
-  async getReconciliation(id: number, params: { month: number; year: number }) {
+  async getReconciliation(id: number | string, params: { month: number; year: number }) {
     const response = await api.get(`/bank-accounts/${id}/reconciliation`, { params });
     return response.data.data as ReconciliationData;
   },
-  async matchReconciliation(id: number, payload: MatchPayload) {
+  async matchReconciliation(id: number | string, payload: MatchPayload) {
     const response = await api.post(`/bank-accounts/${id}/reconciliation/match`, payload);
     return response.data.data as { matched: number };
   },
-  async finalizeReconciliation(id: number, payload: { month: number; year: number }) {
+  async finalizeReconciliation(id: number | string, payload: { month: number; year: number }) {
     const response = await api.post(`/bank-accounts/${id}/reconciliation/finalize`, payload);
     return response.data.data as { bankAccountId: number; month: number; year: number; finalizedAt: string; status: "LOCKED" };
   },

@@ -39,7 +39,7 @@ export const SalaryPage = () => {
   const form = useForm<SalaryInput>({
     resolver: zodResolver(salarySchema),
     defaultValues: {
-      employeeId: "",
+      employeeId: 0,
       month: now.getMonth() + 1,
       year: now.getFullYear(),
       daysWorked: 30,
@@ -62,7 +62,7 @@ export const SalaryPage = () => {
     onSuccess: () => {
       toast.success("Salary record created");
       form.reset({
-        employeeId: "",
+        employeeId: 0,
         month: now.getMonth() + 1,
         year: now.getFullYear(),
         daysWorked: 30,
@@ -83,10 +83,10 @@ export const SalaryPage = () => {
     <div className="space-y-4">
       <PageHeader title="Salary Processing" subtitle={`${(rows as SalaryRow[]).length} payroll records`} />
 
-      <form className="grid gap-3 rounded-card border border-border bg-card p-4 md:grid-cols-5" onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}>
+      <form className="grid gap-3 rounded-card border border-border bg-card p-4 md:grid-cols-5" onSubmit={form.handleSubmit((values: SalaryInput) => createMutation.mutate(values))}>
         <div className="md:col-span-2">
           <p className="mb-1 text-xs text-muted">Employee</p>
-          <SearchableSelect onChange={(value) => form.setValue("employeeId", value)} options={employeeOptions} value={form.watch("employeeId")} />
+          <SearchableSelect onChange={(value) => form.setValue("employeeId", Number(value))} options={employeeOptions} value={form.watch("employeeId")} />
         </div>
         <label className="text-xs text-muted">Month<input className="mt-1 h-10 w-full rounded border border-border px-3 text-sm" type="number" min={1} max={12} {...form.register("month", { valueAsNumber: true })} /></label>
         <label className="text-xs text-muted">Year<input className="mt-1 h-10 w-full rounded border border-border px-3 text-sm" type="number" {...form.register("year", { valueAsNumber: true })} /></label>

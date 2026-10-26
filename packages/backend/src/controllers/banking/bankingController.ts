@@ -196,7 +196,7 @@ export const importBankStatement = async (req: Request, res: Response) => {
   if (!account) return fail(res, 404, "BANK_ACCOUNT_NOT_FOUND", "Bank account not found");
 
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
-  const batchId = `bank-import-${Date.now()}`;
+  const batchId = Math.floor(Date.now() / 1000);
   let importedRows = 0;
   let duplicatesSkipped = 0;
   let balance = Number(account.bankBalance);

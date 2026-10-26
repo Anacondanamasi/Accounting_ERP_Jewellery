@@ -422,7 +422,7 @@ export const InvoiceFormPage = () => {
                 setValue("customerId", Number(value), { shouldValidate: true });
                 clearErrors("customerId");
               }}
-              options={customerOptions.map(o => ({ ...o, value: String(o.value) }))}
+              options={customerOptions.map((o: any) => ({ ...o, value: String(o.value) }))}
               value={String(watch("customerId") || "")}
               placeholder="Select or search customer..."
               onAddNew={(query) => {
@@ -617,7 +617,7 @@ export const InvoiceFormPage = () => {
                 {(errors.lines?.[index] as any) && (
                   <div className="md:col-span-12 px-2 pb-1">
                     <p className="text-[10px] text-ruby italic">
-                      {Object.values(errors.lines[index] || {})
+                      {Object.values(errors.lines?.[index] || {})
                         .map((err: any) => err?.message)
                         .filter(Boolean)
                         .join(", ") || "Invalid data in this row. Please check weights and rates."}

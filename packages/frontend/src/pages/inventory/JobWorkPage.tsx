@@ -35,7 +35,7 @@ export const JobWorkPage = () => {
   const form = useForm<JwoInput>({
     resolver: zodResolver(jwoSchema),
     defaultValues: {
-      karigarId: "",
+      karigarId: 0,
       issueDate: new Date().toISOString().slice(0, 10),
       expectedDate: new Date().toISOString().slice(0, 10),
       description: "",
@@ -92,7 +92,7 @@ export const JobWorkPage = () => {
 
       <FilterBar
         filters={[
-          { key: "karigarId", type: "select", label: "Karigar", options: karigars.map((k: KarigarRow) => ({ label: k.name, value: k.id })) },
+          { key: "karigarId", type: "select", label: "Karigar", options: karigars.map((k: KarigarRow) => ({ label: k.name, value: String(k.id) })) },
           {
             key: "status",
             type: "select",
@@ -148,13 +148,13 @@ export const JobWorkPage = () => {
 
       {openIssue ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-charcoal/60 p-4" onClick={(event) => { if (event.currentTarget === event.target) setOpenIssue(false); }}>
-          <form className="w-full max-w-3xl rounded-card bg-card p-6 shadow-modal" onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}>
+          <form className="w-full max-w-3xl rounded-card bg-card p-6 shadow-modal" onSubmit={form.handleSubmit((values) => createMutation.mutate(values as any))}>
             <h3 className="mb-4 font-display text-2xl font-semibold">Issue Gold to Karigar</h3>
             <div className="grid gap-3 md:grid-cols-3">
               <div className="md:col-span-1">
                 <p className="mb-1 text-xs text-muted">Karigar</p>
                 <SearchableSelect
-                  onChange={(val) => form.setValue("karigarId", val)}
+                  onChange={(val) => form.setValue("karigarId", Number(val))}
                   options={karigarOptions}
                   value={form.watch("karigarId")}
                 />

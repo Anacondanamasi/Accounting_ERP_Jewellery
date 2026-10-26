@@ -66,7 +66,7 @@ export const BankImportPage = () => {
   const form = useForm<ImportFormValues>({
     resolver: zodResolver(importFormSchema),
     defaultValues: {
-      bankAccountId: searchParams.get("accountId") ?? 1,
+      bankAccountId: Number(searchParams.get("accountId") ?? 1),
       format: "AUTO",
       fromDate: "2025-04-01",
       toDate: "2025-04-30",

@@ -44,7 +44,7 @@ export const BankReconciliationPage = () => {
     mutationFn: () =>
       bankingService.matchReconciliation(accountId, {
         links: Object.entries(selectedSuggestions).map(([bankTransactionId, journalRef]) => ({
-          bankTransactionId,
+          bankTransactionId: Number(bankTransactionId),
           journalRef,
         })),
       }),

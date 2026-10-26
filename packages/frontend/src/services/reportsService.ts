@@ -309,7 +309,7 @@ export const reportsService = {
     const response = await api.get("/reports/ageing/receivables", { params });
     return response.data.data;
   },
-  async getReceivablesAgeingCsvUrl(params: AgeingParams): string {
+  getReceivablesAgeingCsvUrl(params: AgeingParams): string {
     const qs = new URLSearchParams({ ...params, export: "csv" } as any).toString();
     return `${api.defaults.baseURL}/reports/ageing/receivables?${qs}`;
   },

@@ -7,10 +7,13 @@ const round = (val: number): number => Math.round(val * 100) / 100;
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export const formatDateDisplay = (date: Date): string => {
-  const d = String(date.getDate()).padStart(2, "0");
-  const m = MONTH_NAMES[date.getMonth()];
-  const y = date.getFullYear();
+export const formatDateDisplay = (date?: Date | string | null): string => {
+  if (!date) return "-";
+  const dObj = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(dObj.getTime())) return "-";
+  const d = String(dObj.getDate()).padStart(2, "0");
+  const m = MONTH_NAMES[dObj.getMonth()];
+  const y = dObj.getFullYear();
   return `${d}-${m}-${y}`;
 };
 

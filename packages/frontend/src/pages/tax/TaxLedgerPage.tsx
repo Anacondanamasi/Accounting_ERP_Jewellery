@@ -57,9 +57,9 @@ export const TaxLedgerPage = () => {
   const igstLiability = Number(gstr1?.totals?.igst ?? 0);
 
   const itc = Number(gstr3b?.itc?.net ?? 0);
-  const cgstCredit = Number(gstr3b?.itc?.allOther?.cgst ?? 0);
-  const sgstCredit = Number(gstr3b?.itc?.allOther?.sgst ?? 0);
-  const igstCredit = Number(gstr3b?.itc?.allOther?.igst ?? 0);
+  const cgstCredit = Number((gstr3b?.itc as any)?.allOther?.cgst ?? gstr3b?.itc?.cgst ?? 0);
+  const sgstCredit = Number((gstr3b?.itc as any)?.allOther?.sgst ?? gstr3b?.itc?.sgst ?? 0);
+  const igstCredit = Number((gstr3b?.itc as any)?.allOther?.igst ?? gstr3b?.itc?.igst ?? 0);
 
   const netTax = Number(gstr3b?.netTaxPayable ?? outwardTax - itc);
 

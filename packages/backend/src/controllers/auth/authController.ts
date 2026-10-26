@@ -65,7 +65,7 @@ export const me = async (req: Request, res: Response) => {
   if (!req.auth) return fail(res, 401, "UNAUTHORIZED", "Not authenticated");
   
   const user = await prisma.user.findUnique({
-    where: { id: req.auth.userId },
+    where: { id: Number(req.auth.userId) },
     include: { company: true }
   });
 

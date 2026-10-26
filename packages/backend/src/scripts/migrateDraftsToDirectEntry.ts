@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { prisma } from "../lib/prisma.ts";
-import { syncInvoiceJournalPosting } from "../controllers/invoices/invoiceController.ts";
-import { syncBillJournalPosting } from "../controllers/bills/billController.ts";
+import { prisma } from "../lib/prisma";
+import { syncInvoiceJournalPosting } from "../controllers/invoices/invoiceController";
+import { syncBillJournalPosting } from "../controllers/bills/billController";
 
 async function runMigration() {
   console.log("===============================================================================");

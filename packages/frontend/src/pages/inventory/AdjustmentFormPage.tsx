@@ -22,6 +22,7 @@ const lineSchema = z.object({
   accountId: z.coerce.number(),
 });
 
+
 const adjustmentSchema = z.object({
   date: z.string().min(1),
   type: z.string().min(3),
@@ -64,7 +65,7 @@ export const AdjustmentFormPage = () => {
       reason: "",
       lines: [
         {
-          itemId: "",
+          itemId: 0,
           currentQty: 0,
           currentWt: 0,
           adjustedQty: 0,
@@ -110,7 +111,7 @@ export const AdjustmentFormPage = () => {
     <div className="space-y-4">
       <PageHeader title="Inventory Adjustment Form" subtitle="Create draft and route through approval workflow" />
 
-      <form className="space-y-4" onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}>
+      <form className="space-y-4" onSubmit={form.handleSubmit((values: AdjustmentInput) => createMutation.mutate(values))}>
         <div className="grid gap-3 rounded-card border border-border bg-card p-4 md:grid-cols-3">
           <label className="text-xs text-muted">Date<input className="mt-1 h-10 w-full rounded border border-border px-3 text-sm" type="date" {...form.register("date")} /></label>
           <label className="text-xs text-muted">Adjustment Type
@@ -128,7 +129,7 @@ export const AdjustmentFormPage = () => {
               className="rounded border border-border px-3 py-1 text-sm"
               onClick={() =>
                 lineArray.append({
-                  itemId: "",
+                  itemId: 0,
                   currentQty: 0,
                   currentWt: 0,
                   adjustedQty: 0,
@@ -155,8 +156,8 @@ export const AdjustmentFormPage = () => {
                     className="mt-1 h-10 w-full rounded border border-border px-3 text-sm"
                     {...form.register(`lines.${index}.itemId`)}
                     onChange={(event) => {
-                      const item = items.find((row: InventoryItem) => row.id === event.target.value);
-                      form.setValue(`lines.${index}.itemId`, event.target.value);
+                      const item = items.find((row: InventoryItem) => row.id === Number(event.target.value));
+                      form.setValue(`lines.${index}.itemId`, Number(event.target.value));
                       form.setValue(`lines.${index}.currentQty`, item?.stockQty ?? 0);
                       form.setValue(`lines.${index}.currentWt`, item?.stockWt ?? 0);
                       form.setValue(`lines.${index}.oldRate`, item?.costPrice ?? 0);

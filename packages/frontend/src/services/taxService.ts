@@ -248,8 +248,13 @@ export const taxService = {
   },
   async validateGstin(gstin: string) {
     const response = await api.post("/tax/validate-gstin", { gstin });
-    return response.data.data as {
+    const data = response.data.data;
+    return {
+      ...data,
+      valid: Boolean(data?.isValid),
+    } as {
       isValid: boolean;
+      valid: boolean;
       gstin: string;
       stateCode: string;
       stateName: string;

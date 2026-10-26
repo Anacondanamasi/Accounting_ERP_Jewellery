@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma.ts";
+import { prisma } from "../lib/prisma";
 
 async function auditData() {
   console.log("=== INVOICES BY STATUS ===");

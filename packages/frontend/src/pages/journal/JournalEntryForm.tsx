@@ -370,7 +370,7 @@ export const JournalEntryForm = () => {
                               form.clearErrors(`lines.${index}.partyName` as any);
                             }
                           }}
-                          options={accountOptions.map((o) => ({ ...o, value: String(o.value) }))}
+                          options={accountOptions.map((o: any) => ({ ...o, value: String(o.value) }))}
                           placeholder="Select an account..."
                           value={String(form.watch(`lines.${index}.accountId`) || "")}
                         />

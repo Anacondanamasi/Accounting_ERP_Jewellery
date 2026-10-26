@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger" | "destructive";
   size?: "sm" | "md" | "lg";
 }
 
@@ -23,6 +23,7 @@ export const Button = ({
     outline: "border border-border bg-transparent text-charcoal hover:bg-canvas focus:ring-border",
     ghost: "bg-transparent text-charcoal hover:bg-canvas focus:ring-canvas",
     danger: "bg-ruby text-white hover:bg-ruby/90 focus:ring-ruby",
+    destructive: "bg-ruby text-white hover:bg-ruby/90 focus:ring-ruby",
   };
 
   const sizes = {
@@ -34,7 +35,7 @@ export const Button = ({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-btn font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center rounded font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         variants[variant],
         sizes[size],
         className

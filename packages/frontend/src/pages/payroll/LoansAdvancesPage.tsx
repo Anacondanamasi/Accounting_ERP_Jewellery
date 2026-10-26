@@ -62,7 +62,7 @@ export const LoansAdvancesPage = () => {
   const form = useForm<LoanInput>({
     resolver: zodResolver(loansSchema),
     defaultValues: {
-      employeeId: "",
+      employeeId: 0,
       issuedDate: formatDate(new Date(), "input"),
       principal: 0,
       monthlyRecovery: 0,
@@ -85,7 +85,7 @@ export const LoansAdvancesPage = () => {
     const employee = employeeMap.get(values.employeeId);
     if (!employee) return;
     const next: LoanRow = {
-      id: `loan_${Date.now()}`,
+      id: Date.now(),
       employeeId: employee.id,
       employeeName: employee.name,
       issuedDate: values.issuedDate,
@@ -99,7 +99,7 @@ export const LoansAdvancesPage = () => {
     writeLoans(updated);
     setRows(updated);
     form.reset({
-      employeeId: "",
+      employeeId: 0,
       issuedDate: formatDate(new Date(), "input"),
       principal: 0,
       monthlyRecovery: 0,
@@ -115,7 +115,7 @@ export const LoansAdvancesPage = () => {
         ...row,
         recovered,
         balance,
-        status: balance === 0 ? "CLOSED" : "OPEN",
+        status: (balance === 0 ? "CLOSED" : "OPEN") as "OPEN" | "CLOSED",
       };
     });
     writeLoans(updated);
@@ -130,7 +130,7 @@ export const LoansAdvancesPage = () => {
         <div className="md:col-span-2">
           <p className="mb-1 text-xs text-muted">Employee</p>
           <SearchableSelect
-            onChange={(value) => form.setValue("employeeId", value)}
+            onChange={(value) => form.setValue("employeeId", Number(value))}
             options={employeeOptions}
             value={form.watch("employeeId")}
           />

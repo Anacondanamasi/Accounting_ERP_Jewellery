@@ -5,6 +5,7 @@ import { ErrorMessage } from "./ErrorMessage";
 
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
+  placeholder?: string;
   error?: string;
   required?: boolean;
   containerClassName?: string;
@@ -12,7 +13,7 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, required, containerClassName, className, options, ...props }, ref) => {
+  ({ label, placeholder, error, required, containerClassName, className, options, ...props }, ref) => {
     const id = props.id || props.name;
 
     return (
@@ -34,6 +35,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           aria-describedby={error ? `${id}-error` : undefined}
           {...props}
         >
+          {placeholder && <option value="">{placeholder}</option>}
           {options.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}

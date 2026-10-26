@@ -131,7 +131,7 @@ export const NoteListPage = ({ kind }: { kind: NoteKind }) => {
 
     return (notes as NoteRow[]).filter((row) => {
       const partyId = kind === "credit" ? row.customerId : row.supplierId;
-      const partyName = partyMap.get(partyId ?? "") ?? "";
+      const partyName = partyMap.get(Number(partyId)) ?? "";
       const haystack = `${row.noteNo} ${partyName} ${row.referenceNo ?? ""} ${row.reason ?? ""}`.toLowerCase();
       const date = new Date(row.date);
       const matchesSearch = search ? haystack.includes(search) : true;
@@ -191,7 +191,7 @@ export const NoteListPage = ({ kind }: { kind: NoteKind }) => {
             header: config.partyLabel,
             cell: ({ row }) => {
               const partyId = kind === "credit" ? row.original.customerId : row.original.supplierId;
-              return partyMap.get(partyId ?? "") ?? "-";
+              return partyMap.get(Number(partyId)) ?? "-";
             },
           }),
           col.accessor("referenceNo", { header: "Reference", cell: (info) => info.getValue() ?? "-" }),
@@ -245,7 +245,7 @@ export const NoteFormPage = ({ kind }: { kind: NoteKind }) => {
 
   const { data: existing } = useQuery({
     queryKey: [kind, "note", id],
-    queryFn: () => config.getById(id!),
+    queryFn: () => config.getById(Number(id)),
     enabled: editing,
   });
   const { data: customers = [] } = useQuery({
@@ -264,8 +264,8 @@ export const NoteFormPage = ({ kind }: { kind: NoteKind }) => {
       const request: NotePayload = {
         date: payload.date,
         partyType: config.partyType,
-        customerId: config.partyType === "CUSTOMER" ? payload.partyId : null,
-        supplierId: config.partyType === "SUPPLIER" ? payload.partyId : null,
+        customerId: config.partyType === "CUSTOMER" ? Number(payload.partyId) : null,
+        supplierId: config.partyType === "SUPPLIER" ? Number(payload.partyId) : null,
         referenceNo: payload.referenceNo?.trim() || null,
         reason: payload.reason?.trim() || null,
         lines: payload.lines.map((line) => ({
@@ -275,7 +275,7 @@ export const NoteFormPage = ({ kind }: { kind: NoteKind }) => {
           gstPct: toNumber(line.gstPct),
         })),
       };
-      return config.save(id, request);
+      return config.save(id ? Number(id) : undefined, request);
     },
     onSuccess: () => {
       toast.success(editing ? `${config.singular} updated` : `${config.singular} created`);

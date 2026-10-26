@@ -228,7 +228,7 @@ export const getReceivablesAgeing = async (req: Request, res: Response) => {
         category:         customer.category ?? "",
         city:             customer.city ?? "",
         currency:         "INR",
-        totalOutstanding: computed.totalOutstanding,
+        openingBalance,
         ...computed,
         invoices:         view === "detail" ? invoiceRows : undefined,
       };
@@ -383,7 +383,7 @@ export const getPayablesAgeing = async (req: Request, res: Response) => {
         category:      supplier.category ?? "",
         city:          supplier.city ?? "",
         currency:      "INR",
-        totalOutstanding: computed.totalOutstanding,
+        openingBalance,
         ...computed,
         bills:         view === "detail" ? billRows : undefined,
       };
