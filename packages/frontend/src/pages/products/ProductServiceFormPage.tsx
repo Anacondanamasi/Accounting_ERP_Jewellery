@@ -222,7 +222,7 @@ export const ProductServiceFormPage = () => {
             <Button variant="outline" onClick={() => navigate(editing ? `/products/${id}` : "/products")} type="button">
               <X className="mr-2 h-4 w-4" /> Cancel
             </Button>
-            <Button onClick={handleSubmit} loading={saveMutation.isPending} type="button">
+            <Button onClick={handleSubmit} loading={saveMutation.isPending} type="button" data-shortcut="save" title="Save Item (Ctrl+S)">
               <Save className="mr-2 h-4 w-4" /> {editing ? "Update Item" : "Save Item"}
             </Button>
           </>

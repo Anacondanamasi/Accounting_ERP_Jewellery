@@ -482,7 +482,7 @@ export const CustomerFormPage = () => {
           {/* Footer Actions */}
           <div className="flex items-center justify-between pt-4 pb-12">
             <div className="flex items-center gap-4">
-              <Button type="submit" loading={isSubmitting}>
+              <Button type="submit" loading={isSubmitting} data-shortcut="save" title="Save Customer (Ctrl+S)">
                 <Save className="mr-2 h-4 w-4" />
                 Save Customer
               </Button>
