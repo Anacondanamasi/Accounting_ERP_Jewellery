@@ -2,7 +2,16 @@ import { createColumnHelper } from "@tanstack/react-table";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { Download, Printer, Plus, RefreshCw } from "lucide-react";
+import {
+  Download,
+  Printer,
+  Plus,
+  RefreshCw,
+  TrendingUp,
+  CreditCard,
+  AlertCircle,
+  FileText,
+} from "lucide-react";
 import { DataTable } from "@/components/shared/DataTable";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -11,7 +20,6 @@ import { WeightCell } from "@/components/shared/WeightCell";
 import { formatCurrency } from "@/lib/formatters";
 import { invoiceService } from "@/services/invoiceService";
 import { format } from "date-fns";
-import { toast } from "sonner";
 
 interface InvoiceRow {
   id: number;
@@ -37,6 +45,13 @@ export const InvoiceListPage = () => {
   });
 
   const rows: InvoiceRow[] = data?.rows ?? [];
+  const summary = data?.summary || {
+    total: 0,
+    paid: 0,
+    outstanding: 0,
+    open: 0,
+    overdue: 0,
+  };
 
   // Clean GST Tax Invoice Print and Save as PDF
   const handleDownloadPdf = (id: number) => {
@@ -51,7 +66,7 @@ export const InvoiceListPage = () => {
     <div className="space-y-4">
       <PageHeader
         title="Sales Invoices"
-        subtitle="Manage sales invoices · Click row to edit"
+        subtitle="Manage GST sales invoices · Filter by financial year, quarters, months, or custom date ranges"
         actions={
           <>
             <button
@@ -74,25 +89,75 @@ export const InvoiceListPage = () => {
         }
       />
 
+      {/* Financial KPI Summary Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-btn border border-border/80 bg-white p-3 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-muted">
+            <span>Total Invoiced</span>
+            <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
+          </div>
+          <div className="mt-1 font-display text-base font-bold text-charcoal sm:text-lg">
+            {formatCurrency(summary.total)}
+          </div>
+          <div className="text-[11px] text-muted">{rows.length} total invoices</div>
+        </div>
+
+        <div className="rounded-btn border border-border/80 bg-white p-3 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-muted">
+            <span>Amount Received</span>
+            <CreditCard className="h-3.5 w-3.5 text-emerald-600" />
+          </div>
+          <div className="mt-1 font-display text-base font-bold text-emerald-700 sm:text-lg">
+            {formatCurrency(summary.paid)}
+          </div>
+          <div className="text-[11px] text-emerald-600 font-medium">Settled to bank/cash</div>
+        </div>
+
+        <div className="rounded-btn border border-border/80 bg-white p-3 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-muted">
+            <span>Balance Outstanding</span>
+            <AlertCircle className="h-3.5 w-3.5 text-ruby" />
+          </div>
+          <div className="mt-1 font-display text-base font-bold text-ruby sm:text-lg">
+            {formatCurrency(summary.outstanding)}
+          </div>
+          <div className="text-[11px] text-muted">{summary.open} open invoices</div>
+        </div>
+
+        <div className="rounded-btn border border-border/80 bg-white p-3 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-muted">
+            <span>Overdue Invoices</span>
+            <FileText className="h-3.5 w-3.5 text-amber-600" />
+          </div>
+          <div className="mt-1 font-display text-base font-bold text-amber-700 sm:text-lg">
+            {summary.overdue}
+          </div>
+          <div className="text-[11px] text-amber-700 font-medium">Past payment terms</div>
+        </div>
+      </div>
+
+      {/* Date Period Dropdown & Advanced Filters Bar */}
       <FilterBar
+        showDatePresets
         filters={[
-          { key: "search", type: "search", label: "Search" },
-          { key: "from", type: "date", label: "From" },
-          { key: "to", type: "date", label: "To" },
+          { key: "search", type: "search", label: "Search Invoice or Customer" },
+          { key: "from", type: "date", label: "From Date" },
+          { key: "to", type: "date", label: "To Date" },
           {
             key: "status",
             type: "select",
-            label: "Status",
+            label: "Invoice Status",
             options: [
               { label: "Open", value: "OPEN" },
-              { label: "Void", value: "VOID" },
               { label: "Paid", value: "PAID" },
               { label: "Partial", value: "PARTIAL" },
+              { label: "Void", value: "VOID" },
             ],
           },
         ]}
         values={filters}
         onChange={(key, value) => setFilters((prev) => ({ ...prev, [key]: value }))}
+        onBatchChange={(updates) => setFilters((prev) => ({ ...prev, ...updates }))}
         onReset={() => setFilters({})}
       />
 
@@ -102,7 +167,7 @@ export const InvoiceListPage = () => {
             header: "Invoice No",
             cell: (info) => (
               <Link
-                className="text-sapphire hover:underline font-semibold"
+                className="text-sapphire hover:underline font-semibold font-mono"
                 to={`/invoices/${info.row.original.id}/edit`}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -153,7 +218,7 @@ export const InvoiceListPage = () => {
                   className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2.5 text-2xs font-bold text-charcoal hover:bg-slate-50 shadow-sm transition-all"
                 >
                   <Download className="h-3 w-3 text-gold" />
-                  Download PDF
+                  PDF
                 </button>
                 <button
                   type="button"

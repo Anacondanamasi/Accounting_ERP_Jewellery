@@ -78,14 +78,26 @@ export const listInvoices = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
 
   const from = req.query.from ? new Date(String(req.query.from)) : undefined;
-  const to = req.query.to ? new Date(String(req.query.to)) : undefined;
+  let to = req.query.to ? new Date(String(req.query.to)) : undefined;
+  if (to && !String(req.query.to).includes("T")) {
+    to.setHours(23, 59, 59, 999);
+  }
+
   const status = req.query.status ? String(req.query.status).toUpperCase() : undefined;
   const search = req.query.search ? String(req.query.search) : undefined;
+
+  const dateFilter =
+    from || to
+      ? {
+          ...(from ? { gte: from } : {}),
+          ...(to ? { lte: to } : {}),
+        }
+      : undefined;
 
   const rows = await prisma.invoice.findMany({
     where: {
       companyId,
-      ...(from || to ? { date: { gte: from, lte: to } } : {}),
+      ...(dateFilter ? { date: dateFilter } : {}),
       ...(status ? { status } : {}),
       ...(search
         ? {

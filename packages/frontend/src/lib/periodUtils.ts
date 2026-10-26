@@ -9,37 +9,26 @@ export interface PeriodOption {
   getFromTo: () => { from: string; to: string };
 }
 
+export const getIndianFinancialYear = (date: Date = new Date()) => {
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed, 3 = April
+  const startYear = month >= 3 ? year : year - 1;
+  return {
+    startYear,
+    endYear: startYear + 1,
+    label: `FY ${startYear}-${String(startYear + 1).slice(-2)}`,
+    from: `${startYear}-04-01`,
+    to: `${startYear + 1}-03-31`,
+  };
+};
+
 export const PERIOD_PRESETS: PeriodOption[] = [
   {
     value: "all_time",
-    label: "All Time (From Inception)",
+    label: "All Dates",
     getFromTo: () => ({
-      from: "2024-04-01",
-      to: formatIsoDate(new Date()),
-    }),
-  },
-  {
-    value: "this_fy",
-    label: "This Financial Year (FY 2026-27)",
-    getFromTo: () => ({
-      from: "2026-04-01",
-      to: "2027-03-31",
-    }),
-  },
-  {
-    value: "last_fy",
-    label: "Previous Financial Year (FY 2025-26)",
-    getFromTo: () => ({
-      from: "2025-04-01",
-      to: "2026-03-31",
-    }),
-  },
-  {
-    value: "fy_2024_25",
-    label: "Financial Year 2024-25",
-    getFromTo: () => ({
-      from: "2024-04-01",
-      to: "2025-03-31",
+      from: "",
+      to: "",
     }),
   },
   {
@@ -48,6 +37,28 @@ export const PERIOD_PRESETS: PeriodOption[] = [
     getFromTo: () => {
       const now = formatIsoDate(new Date());
       return { from: now, to: now };
+    },
+  },
+  {
+    value: "yesterday",
+    label: "Yesterday",
+    getFromTo: () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const y = formatIsoDate(d);
+      return { from: y, to: y };
+    },
+  },
+  {
+    value: "this_week",
+    label: "This Week",
+    getFromTo: () => {
+      const d = new Date();
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+      const monday = new Date(d.setDate(diff));
+      const sunday = new Date(d.setDate(diff + 6));
+      return { from: formatIsoDate(monday), to: formatIsoDate(sunday) };
     },
   },
   {
@@ -82,11 +93,36 @@ export const PERIOD_PRESETS: PeriodOption[] = [
     },
   },
   {
+    value: "this_fy",
+    label: (() => {
+      const fy = getIndianFinancialYear();
+      return `This Financial Year (${fy.label})`;
+    })(),
+    getFromTo: () => {
+      const fy = getIndianFinancialYear();
+      return { from: fy.from, to: fy.to };
+    },
+  },
+  {
+    value: "last_fy",
+    label: (() => {
+      const fy = getIndianFinancialYear();
+      return `Previous Financial Year (FY ${fy.startYear - 1}-${String(fy.startYear).slice(-2)})`;
+    })(),
+    getFromTo: () => {
+      const fy = getIndianFinancialYear();
+      return {
+        from: `${fy.startYear - 1}-04-01`,
+        to: `${fy.startYear}-03-31`,
+      };
+    },
+  },
+  {
     value: "custom",
     label: "Custom Date Range",
     getFromTo: () => ({
-      from: "2024-04-01",
-      to: formatIsoDate(new Date()),
+      from: "",
+      to: "",
     }),
   },
 ];
@@ -94,5 +130,5 @@ export const PERIOD_PRESETS: PeriodOption[] = [
 export const getDatesForPeriod = (periodKey: string): { from: string; to: string } => {
   const match = PERIOD_PRESETS.find((p) => p.value === periodKey);
   if (match) return match.getFromTo();
-  return { from: "2024-04-01", to: formatIsoDate(new Date()) };
+  return { from: "", to: "" };
 };
