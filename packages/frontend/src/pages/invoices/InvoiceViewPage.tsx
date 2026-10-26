@@ -145,7 +145,7 @@ export const InvoiceViewPage = () => {
             Duplicate
           </button>
 
-          {data.status === "DRAFT" && (
+          {false && (
             <button
               onClick={() => postMutation.mutate()}
               type="button"

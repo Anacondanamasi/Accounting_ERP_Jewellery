@@ -84,8 +84,8 @@ export const InvoiceListPage = () => {
             type: "select",
             label: "Status",
             options: [
-              { label: "Draft", value: "Draft" },
-              { label: "Posted", value: "POSTED" },
+              { label: "Open", value: "OPEN" },
+              { label: "Void", value: "VOID" },
               { label: "Paid", value: "PAID" },
               { label: "Partial", value: "PARTIAL" },
             ],

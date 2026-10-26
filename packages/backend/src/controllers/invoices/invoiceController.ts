@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { invoiceFormSchema } from "@jewelledger/shared";
 import { created, fail, ok } from "../../lib/apiResponse";
 import { computeJewelleryTotals, makeDocumentNumber, splitGst } from "../../lib/documents";
+import { evaluatePlaceOfSupply, generateGstJournalPosting, type DocumentTaxSummary, round2 } from "../../lib/gst";
 import {
   resolveAccountingAccounts,
   reversePostedJournalsForSource,
@@ -108,7 +109,7 @@ export const listInvoices = async (req: Request, res: Response) => {
       total: totalAmount,
       paid: paidAmount,
       outstanding: balanceDue,
-      draft: rows.filter((row) => row.status === "DRAFT").length,
+      open: rows.filter((row) => row.status === "OPEN").length,
       overdue: rows.filter((row) => Number(row.balanceDue) > 0 && row.dueDate < new Date()).length,
     },
   });
@@ -153,6 +154,60 @@ export const getInvoiceById = async (req: Request, res: Response) => {
   return ok(res, mappedInvoice);
 };
 
+export const syncInvoiceJournalPosting = async (
+  tx: any,
+  companyId: number,
+  invoice: any,
+  actor: string,
+) => {
+  const [company, customer] = await Promise.all([
+    tx.company.findUnique({ where: { id: companyId } }),
+    invoice.customerId ? tx.customer.findUnique({ where: { id: invoice.customerId } }) : null,
+  ]);
+
+  const posResult = evaluatePlaceOfSupply({
+    supplierGstin: company?.gstin,
+    supplierState: company?.state,
+    recipientGstin: customer?.gstin,
+    placeOfSupply: (invoice as any).placeOfSupply || customer?.city,
+  });
+
+  const taxSummary: DocumentTaxSummary = {
+    lines: [],
+    subTotal: Number(invoice.subTotal || 0),
+    totalDiscount: Number(invoice.discount || 0),
+    taxableAmount: Number(invoice.taxableAmount || 0),
+    cgst: Number(invoice.cgst || 0),
+    sgst: Number(invoice.sgst || 0),
+    igst: Number(invoice.igst || 0),
+    cess: 0,
+    taxTotal: Number(invoice.cgst || 0) + Number(invoice.sgst || 0) + Number(invoice.igst || 0),
+    roundOff: 0,
+    grandTotal: Number(invoice.grandTotal || 0),
+    rateBreakup: [],
+  };
+
+  const accounts = await resolveAccountingAccounts(tx, companyId, actor);
+  const postingLines = generateGstJournalPosting({
+    documentType: "INVOICE",
+    documentNo: invoice.invoiceNo,
+    posResult,
+    taxSummary,
+    accounts,
+    partyName: customer?.name,
+  });
+
+  await upsertPostedJournalForSource(tx, {
+    companyId,
+    sourceKey: `INVOICE:${invoice.id}`,
+    entryPrefix: "SINV",
+    date: new Date(invoice.date),
+    narration: `Invoice ${invoice.invoiceNo}${customer?.name ? ` - ${customer.name}` : ""}`,
+    actor,
+    lines: postingLines,
+  });
+};
+
 export const createInvoice = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
 
@@ -169,37 +224,43 @@ export const createInvoice = async (req: Request, res: Response) => {
   const { lines, ...header } = parsed.data;
   const { totals, creates } = await lineCreates(companyId, getActor(req), lines as any);
   const tax = splitGst(totals.taxTotal, false);
+  const actor = getActor(req);
 
-  const record = await prisma.invoice.create({
-    data: {
-      companyId,
-      invoiceNo: makeDocumentNumber("INV"),
-      date: new Date(header.invoiceDate),
-      dueDate: new Date(header.dueDate),
-      customerId: header.customerId,
-      salespersonId: header.salespersonId,
-      status: "DRAFT",
-      subTotal: totals.subTotal,
-      discount: totals.discount,
-      taxableAmount: totals.taxableAmount,
-      cgst: tax.cgst,
-      sgst: tax.sgst,
-      igst: tax.igst,
-      grandTotal: totals.grandTotal,
-      paidAmount: 0,
-      balanceDue: totals.grandTotal,
-      notes: header.notes,
-      terms: header.terms,
-      goldRate22k: 0,
-      goldRate18k: 0,
-      goldRate24k: 0,
-      createdBy: getActor(req),
-      lines: { create: creates },
-    },
-    include: invoiceInclude,
+  const record = await prisma.$transaction(async (tx) => {
+    const createdInvoice = await tx.invoice.create({
+      data: {
+        companyId,
+        invoiceNo: makeDocumentNumber("INV"),
+        date: new Date(header.invoiceDate),
+        dueDate: new Date(header.dueDate),
+        customerId: header.customerId,
+        salespersonId: header.salespersonId,
+        status: "OPEN",
+        subTotal: totals.subTotal,
+        discount: totals.discount,
+        taxableAmount: totals.taxableAmount,
+        cgst: tax.cgst,
+        sgst: tax.sgst,
+        igst: tax.igst,
+        grandTotal: totals.grandTotal,
+        paidAmount: 0,
+        balanceDue: totals.grandTotal,
+        notes: header.notes,
+        terms: header.terms,
+        goldRate22k: 0,
+        goldRate18k: 0,
+        goldRate24k: 0,
+        createdBy: actor,
+        lines: { create: creates },
+      },
+      include: invoiceInclude,
+    });
+
+    await syncInvoiceJournalPosting(tx, companyId, createdInvoice, actor);
+    return createdInvoice;
   });
 
-  return created(res, record, "Invoice created");
+  return created(res, record, "Invoice created and posted successfully");
 };
 
 export const updateInvoice = async (req: Request, res: Response) => {
@@ -223,19 +284,18 @@ export const updateInvoice = async (req: Request, res: Response) => {
   const paidAmount = Number(existing.paidAmount || 0);
   const balanceDue = Math.max(0, totals.grandTotal - paidAmount);
   let status = existing.status;
-  if (paidAmount >= totals.grandTotal) {
+  if (paidAmount >= totals.grandTotal && totals.grandTotal > 0) {
     status = "PAID";
   } else if (paidAmount > 0) {
     status = "PARTIAL";
-  } else if (existing.status === "DRAFT") {
-    status = "DRAFT";
   } else {
-    status = "POSTED";
+    status = "OPEN";
   }
 
+  const actor = getActor(req);
   const record = await prisma.$transaction(async (tx) => {
     await tx.invoiceItem.deleteMany({ where: { invoiceId: existing.id, companyId } });
-    return tx.invoice.update({
+    const updatedInvoice = await tx.invoice.update({
       where: { id: existing.id },
       data: {
         date: new Date(header.invoiceDate),
@@ -258,47 +318,60 @@ export const updateInvoice = async (req: Request, res: Response) => {
       },
       include: invoiceInclude,
     });
+
+    // Atomically replace previous journal posting with recalculation
+    await syncInvoiceJournalPosting(tx, companyId, updatedInvoice, actor);
+    return updatedInvoice;
   });
 
-  return ok(res, record, "Invoice updated");
+  return ok(res, record, "Invoice updated and ledger synchronized");
 };
 
 export const postInvoice = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
-
   const invoice = await prisma.invoice.findFirst({ where: { id: Number(req.params.id), companyId } });
   if (!invoice) return fail(res, 404, "INVOICE_NOT_FOUND", "Invoice not found");
-  if (invoice.status === "VOID") return fail(res, 400, "INVALID_STATUS", "Void invoice cannot be posted");
+  if (invoice.status === "DRAFT") {
+    const actor = getActor(req);
+    const paidAmount = Number(invoice.paidAmount || 0);
+    const finalStatus = paidAmount >= Number(invoice.grandTotal) ? "PAID" : paidAmount > 0 ? "PARTIAL" : "OPEN";
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { status: finalStatus },
+      });
+      await syncInvoiceJournalPosting(tx, companyId, invoice, actor);
+      return row;
+    });
+    return ok(res, updated, "Invoice posted");
+  }
+  return ok(res, invoice, "Invoice is active");
+};
+
+export const deleteInvoice = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+  const id = Number(req.params.id);
+  const invoice = await prisma.invoice.findFirst({ where: { id, companyId } });
+  if (!invoice) return fail(res, 404, "INVOICE_NOT_FOUND", "Invoice not found");
+
+  if (Number(invoice.paidAmount) > 0) {
+    return fail(res, 400, "PAYMENT_EXISTS", "Cannot delete an invoice with recorded payments. Void it instead.");
+  }
 
   const actor = getActor(req);
-  const paidAmount = Number(invoice.paidAmount || 0);
-  const finalStatus = paidAmount >= Number(invoice.grandTotal) ? "PAID" : paidAmount > 0 ? "PARTIAL" : "POSTED";
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.invoice.update({
-      where: { id: invoice.id },
-      data: { status: finalStatus },
-    });
-
-    const accounts = await resolveAccountingAccounts(tx, companyId, actor);
-    await upsertPostedJournalForSource(tx, {
+  await prisma.$transaction(async (tx) => {
+    await reversePostedJournalsForSource(tx, {
       companyId,
       sourceKey: `INVOICE:${invoice.id}`,
-      entryPrefix: "SINV",
-      date: new Date(invoice.date),
-      narration: `Invoice ${invoice.invoiceNo}`,
       actor,
-      lines: [
-        { accountId: accounts.receivableId, debit: Number(invoice.grandTotal), narration: `Invoice ${invoice.invoiceNo}` },
-        { accountId: accounts.salesId, credit: Number(invoice.taxableAmount), narration: `Invoice ${invoice.invoiceNo}` },
-        { accountId: accounts.outputGstId, credit: Number(invoice.cgst) + Number(invoice.sgst) + Number(invoice.igst), narration: `GST on ${invoice.invoiceNo}` },
-      ],
+      date: new Date(),
+      narrationPrefix: "Invoice deleted",
     });
-
-    return row;
+    await tx.invoiceItem.deleteMany({ where: { invoiceId: invoice.id, companyId } });
+    await tx.invoice.delete({ where: { id: invoice.id } });
   });
 
-  return ok(res, updated, "Invoice posted");
+  return ok(res, true, "Invoice deleted");
 };
 
 export const voidInvoice = async (req: Request, res: Response) => {

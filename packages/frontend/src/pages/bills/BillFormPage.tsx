@@ -11,6 +11,9 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatCurrency } from "@/lib/formatters";
 import { billService } from "@/services/billService";
+import { taxService } from "@/services/taxService";
+import { JournalPreviewModal } from "@/components/accounting/JournalPreviewModal";
+import { FileText } from "lucide-react";
 import { useInvoiceCalc } from "@/hooks/useInvoiceCalc";
 import { supplierService } from "@/services/supplierService";
 import { productServiceService } from "@/services/productServiceService";
@@ -59,6 +62,8 @@ const defaultLine: BillInput["lines"][number] = {
 };
 
 export const BillFormPage = () => {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { id } = useParams();
@@ -156,11 +161,11 @@ export const BillFormPage = () => {
     form.setValue(`lines.${index}.hsnCode`, "7113");
   };
 
-  const saveDraftMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: (payload: BillInput) =>
       editing ? billService.update(Number(id), payload) : billService.create(payload),
     onSuccess: (record) => {
-      toast.success(editing ? "Bill saved successfully" : "Bill draft created");
+      toast.success(editing ? "Bill saved & ledger updated" : "Bill created & posted to ledger");
       queryClient.invalidateQueries({ queryKey: ["bills"] });
       if (!editing && record?.id) {
         navigate(`/bills/${record.id}/edit`);
@@ -169,8 +174,27 @@ export const BillFormPage = () => {
       }
     },
     onError: (error: any) => {
-      console.error("Save Draft Error:", error);
-      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to save bill draft");
+      console.error("Save Error:", error);
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to save bill");
+    },
+  });
+
+  const saveAndNewMutation = useMutation({
+    mutationFn: (payload: BillInput) =>
+      editing ? billService.update(Number(id), payload) : billService.create(payload),
+    onSuccess: () => {
+      toast.success("Bill created & posted to ledger");
+      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      if (editing) {
+        navigate("/bills/new");
+      } else {
+        form.reset();
+        void refetchExisting();
+      }
+    },
+    onError: (error: any) => {
+      console.error("Save Error:", error);
+      toast.error(error?.response?.data?.message || error?.userMessage || "Unable to save bill");
     },
   });
 
@@ -235,7 +259,8 @@ export const BillFormPage = () => {
   };
 
   const isBusy =
-    saveDraftMutation.isPending ||
+    saveMutation.isPending ||
+    saveAndNewMutation.isPending ||
     saveAndCloseMutation.isPending ||
     duplicateMutation.isPending ||
     postMutation.isPending ||
@@ -254,76 +279,20 @@ export const BillFormPage = () => {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
-              className="h-10 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
-              onClick={() => navigate("/bills")}
-              type="button"
-              disabled={isBusy}
-            >
-              Cancel
-            </button>
-
-            {editing && (
-              <>
-                <button
-                  className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
-                  onClick={() => duplicateMutation.mutate()}
-                  type="button"
-                  disabled={isBusy}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  Duplicate
-                </button>
-
-                {existing?.status === "DRAFT" && (
-                  <button
-                    className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
-                    onClick={() => postMutation.mutate()}
-                    type="button"
-                    disabled={isBusy}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    Post
-                  </button>
-                )}
-
-                {Number(existing?.balanceDue) > 0 && existing?.status !== "VOID" && (
-                  <button
-                    className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors text-emerald-700"
-                    onClick={() => setPaymentModalOpen(true)}
-                    type="button"
-                    disabled={isBusy}
-                  >
-                    <CreditCard className="h-3.5 w-3.5" />
-                    Record Payment
-                  </button>
-                )}
-
-                {existing?.status !== "VOID" && (
-                  <button
-                    className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-ruby/40 text-ruby px-4 text-sm font-medium hover:bg-ruby/5 transition-colors"
-                    onClick={() => {
-                      if (window.confirm("Are you sure you want to void this purchase bill?")) {
-                        voidMutation.mutate();
-                      }
-                    }}
-                    type="button"
-                    disabled={isBusy}
-                  >
-                    <Ban className="h-3.5 w-3.5" />
-                    Void
-                  </button>
-                )}
-              </>
-            )}
-
-            <button
               className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
-              onClick={form.handleSubmit((v) => saveDraftMutation.mutate(v), onInvalid)}
+              onClick={form.handleSubmit((v) => saveMutation.mutate(v), onInvalid)}
               type="button"
-              disabled={isBusy}
             >
               <Save className="h-3.5 w-3.5" />
-              Save Draft
+              Save
+            </button>
+            <button
+              className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
+              onClick={form.handleSubmit((v) => saveAndNewMutation.mutate(v), onInvalid)}
+              type="button"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Save & New
             </button>
 
             <button

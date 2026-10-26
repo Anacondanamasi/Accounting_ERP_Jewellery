@@ -7,6 +7,7 @@ import {
   upsertPostedJournalForSource,
 } from "../../lib/accounting";
 import { computeJewelleryTotals, makeDocumentNumber, splitGst } from "../../lib/documents";
+import { evaluatePlaceOfSupply, generateGstJournalPosting, type DocumentTaxSummary, round2 } from "../../lib/gst";
 import { prisma } from "../../lib/prisma";
 import { getCompanyId, getActor } from "../../lib/requestUtils";
 
@@ -109,7 +110,7 @@ export const listBills = async (req: Request, res: Response) => {
       total: totalAmount,
       paid: paidAmount,
       outstanding: balanceDue,
-      draft: rows.filter((row) => row.status === "DRAFT").length,
+      open: rows.filter((row) => row.status === "OPEN").length,
       overdue: rows.filter((row) => Number(row.balanceDue) > 0 && row.dueDate < new Date()).length,
     },
   });
@@ -135,6 +136,61 @@ export const getBillById = async (req: Request, res: Response) => {
   });
 };
 
+export const syncBillJournalPosting = async (
+  tx: any,
+  companyId: number,
+  bill: any,
+  actor: string,
+) => {
+  const [company, supplier] = await Promise.all([
+    tx.company.findUnique({ where: { id: companyId } }),
+    bill.supplierId ? tx.supplier.findUnique({ where: { id: bill.supplierId } }) : null,
+  ]);
+
+  const posResult = evaluatePlaceOfSupply({
+    supplierGstin: supplier?.gstin,
+    supplierState: supplier?.city,
+    recipientGstin: company?.gstin,
+    recipientState: company?.state,
+    placeOfSupply: company?.state,
+  });
+
+  const taxSummary: DocumentTaxSummary = {
+    lines: [],
+    subTotal: Number(bill.subTotal || 0),
+    totalDiscount: Number(bill.discount || 0),
+    taxableAmount: Number(bill.taxableAmount || 0),
+    cgst: Number(bill.cgst || 0),
+    sgst: Number(bill.sgst || 0),
+    igst: Number(bill.igst || 0),
+    cess: 0,
+    taxTotal: Number(bill.cgst || 0) + Number(bill.sgst || 0) + Number(bill.igst || 0),
+    roundOff: 0,
+    grandTotal: Number(bill.grandTotal || 0),
+    rateBreakup: [],
+  };
+
+  const accounts = await resolveAccountingAccounts(tx, companyId, actor);
+  const postingLines = generateGstJournalPosting({
+    documentType: "BILL",
+    documentNo: bill.billNo,
+    posResult,
+    taxSummary,
+    accounts,
+    partyName: supplier?.name,
+  });
+
+  await upsertPostedJournalForSource(tx, {
+    companyId,
+    sourceKey: `BILL:${bill.id}`,
+    entryPrefix: "PBILL",
+    date: new Date(bill.date),
+    narration: `Bill ${bill.billNo}${supplier?.name ? ` - ${supplier.name}` : ""}`,
+    actor,
+    lines: postingLines,
+  });
+};
+
 export const createBill = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
 
@@ -149,33 +205,39 @@ export const createBill = async (req: Request, res: Response) => {
   const { lines, ...header } = parsed.data;
   const { totals, creates } = await lineCreates(companyId, getActor(req), lines);
   const tax = splitGst(totals.taxTotal, false);
+  const actor = getActor(req);
 
-  const row = await prisma.bill.create({
-    data: {
-      companyId,
-      billNo: makeDocumentNumber("BILL"),
-      date: new Date(header.billDate),
-      dueDate: new Date(header.dueDate),
-      supplierId: header.supplierId,
-      status: "DRAFT",
-      subTotal: totals.subTotal,
-      discount: totals.discount,
-      taxableAmount: totals.taxableAmount,
-      taxTotal: totals.taxTotal,
-      cgst: tax.cgst,
-      sgst: tax.sgst,
-      igst: tax.igst,
-      grandTotal: totals.grandTotal,
-      paidAmount: 0,
-      balanceDue: totals.grandTotal,
-      qualityCertUrl: header.qualityCertUrl,
-      createdBy: getActor(req),
-      lines: { create: creates },
-    },
-    include: billInclude,
+  const row = await prisma.$transaction(async (tx) => {
+    const createdBill = await tx.bill.create({
+      data: {
+        companyId,
+        billNo: makeDocumentNumber("BILL"),
+        date: new Date(header.billDate),
+        dueDate: new Date(header.dueDate),
+        supplierId: header.supplierId,
+        status: "OPEN",
+        subTotal: totals.subTotal,
+        discount: totals.discount,
+        taxableAmount: totals.taxableAmount,
+        taxTotal: totals.taxTotal,
+        cgst: tax.cgst,
+        sgst: tax.sgst,
+        igst: tax.igst,
+        grandTotal: totals.grandTotal,
+        paidAmount: 0,
+        balanceDue: totals.grandTotal,
+        qualityCertUrl: header.qualityCertUrl,
+        createdBy: actor,
+        lines: { create: creates },
+      },
+      include: billInclude,
+    });
+
+    await syncBillJournalPosting(tx, companyId, createdBill, actor);
+    return createdBill;
   });
 
-  return created(res, row, "Bill created");
+  return created(res, row, "Bill created and posted successfully");
 };
 
 export const updateBill = async (req: Request, res: Response) => {
@@ -201,13 +263,12 @@ export const updateBill = async (req: Request, res: Response) => {
       ? "PAID"
       : paidAmount > 0
       ? "PARTIAL"
-      : existing.status === "DRAFT"
-      ? "DRAFT"
-      : "POSTED";
+      : "OPEN";
 
+  const actor = getActor(req);
   const row = await prisma.$transaction(async (tx) => {
     await tx.billItem.deleteMany({ where: { billId: existing.id, companyId } });
-    return tx.bill.update({
+    const updatedBill = await tx.bill.update({
       where: { id: existing.id },
       data: {
         date: new Date(header.billDate),
@@ -228,43 +289,59 @@ export const updateBill = async (req: Request, res: Response) => {
       },
       include: billInclude,
     });
+
+    // Atomically replace previous journal posting
+    await syncBillJournalPosting(tx, companyId, updatedBill, actor);
+    return updatedBill;
   });
 
-  return ok(res, row, "Bill updated");
+  return ok(res, row, "Bill updated and ledger synchronized");
 };
 
 export const postBill = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
-
   const bill = await prisma.bill.findFirst({ where: { id: Number(req.params.id), companyId } });
   if (!bill) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
-  if (bill.status === "VOID") return fail(res, 400, "INVALID_STATUS", "Void bill cannot be posted");
+  if (bill.status === "DRAFT") {
+    const actor = getActor(req);
+    const paidAmount = Number(bill.paidAmount || 0);
+    const grandTotal = Number(bill.grandTotal || 0);
+    const nextStatus = paidAmount >= grandTotal && grandTotal > 0 ? "PAID" : paidAmount > 0 ? "PARTIAL" : "OPEN";
+
+    const row = await prisma.$transaction(async (tx) => {
+      const updated = await tx.bill.update({ where: { id: bill.id }, data: { status: nextStatus } });
+      await syncBillJournalPosting(tx, companyId, bill, actor);
+      return updated;
+    });
+    return ok(res, row, "Bill posted");
+  }
+  return ok(res, bill, "Bill is active");
+};
+
+export const deleteBill = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+  const id = Number(req.params.id);
+  const bill = await prisma.bill.findFirst({ where: { id, companyId } });
+  if (!bill) return fail(res, 404, "BILL_NOT_FOUND", "Bill not found");
+
+  if (Number(bill.paidAmount) > 0) {
+    return fail(res, 400, "PAYMENT_EXISTS", "Cannot delete a bill with recorded payments. Void it instead.");
+  }
 
   const actor = getActor(req);
-  const paidAmount = Number(bill.paidAmount || 0);
-  const grandTotal = Number(bill.grandTotal || 0);
-  const nextStatus = paidAmount >= grandTotal && grandTotal > 0 ? "PAID" : paidAmount > 0 ? "PARTIAL" : "POSTED";
-
-  const row = await prisma.$transaction(async (tx) => {
-    const updated = await tx.bill.update({ where: { id: bill.id }, data: { status: nextStatus } });
-    const accounts = await resolveAccountingAccounts(tx, companyId, actor);
-    await upsertPostedJournalForSource(tx, {
+  await prisma.$transaction(async (tx) => {
+    await reversePostedJournalsForSource(tx, {
       companyId,
       sourceKey: `BILL:${bill.id}`,
-      entryPrefix: "PBILL",
-      date: new Date(bill.date),
-      narration: `Bill ${bill.billNo}`,
       actor,
-      lines: [
-        { accountId: accounts.purchaseId, debit: Number(bill.taxableAmount), narration: `Bill ${bill.billNo}` },
-        { accountId: accounts.inputGstId, debit: Number(bill.cgst) + Number(bill.sgst) + Number(bill.igst), narration: `Input GST on ${bill.billNo}` },
-        { accountId: accounts.payableId, credit: Number(bill.grandTotal), narration: `Bill ${bill.billNo}` },
-      ],
+      date: new Date(),
+      narrationPrefix: "Bill deleted",
     });
-    return updated;
+    await tx.billItem.deleteMany({ where: { billId: bill.id, companyId } });
+    await tx.bill.delete({ where: { id: bill.id } });
   });
 
-  return ok(res, row, "Bill posted");
+  return ok(res, true, "Bill deleted");
 };
 
 export const voidBill = async (req: Request, res: Response) => {

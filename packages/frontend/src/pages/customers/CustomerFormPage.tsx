@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/axios";
 import { customerService } from "@/services/customerService";
+import { taxService } from "@/services/taxService";
 
 export const CustomerFormPage = () => {
   const navigate = useNavigate();
@@ -19,6 +20,13 @@ export const CustomerFormPage = () => {
   const [activeTab, setActiveTab] = useState("other");
   const [customerStatus, setCustomerStatus] = useState<string>("ACTIVE");
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [validatingGstin, setValidatingGstin] = useState(false);
+  const [gstinInfo, setGstinInfo] = useState<{
+    valid: boolean;
+    stateName?: string;
+    stateCode?: string;
+    pan?: string;
+  } | null>(null);
 
   const {
     register,
@@ -83,6 +91,34 @@ export const CustomerFormPage = () => {
       toast.error(error?.response?.data?.message || "Failed to activate customer");
     } finally {
       setIsDeactivating(false);
+    }
+  };
+
+  const handleVerifyAndPrefillGstin = async (inputGstin?: string) => {
+    const raw = (inputGstin || watch("gstin") || "").trim().toUpperCase();
+    if (!raw || raw.length !== 15) {
+      toast.error("Please enter a 15-character GSTIN to prefill");
+      return;
+    }
+    setValidatingGstin(true);
+    try {
+      const res = await taxService.validateGstin(raw);
+      if (res.valid) {
+        setGstinInfo({ valid: true, stateName: res.stateName, stateCode: res.stateCode, pan: res.pan });
+        if (res.pan) setValue("pan", res.pan, { shouldDirty: true });
+        if (res.stateName) {
+          setValue("billingAddress.state" as any, res.stateName, { shouldDirty: true });
+          setValue("shippingAddress.state" as any, res.stateName, { shouldDirty: true });
+        }
+        toast.success(`GSTIN valid for ${res.stateName}. PAN (${res.pan}) & State auto-filled.`);
+      } else {
+        setGstinInfo({ valid: false });
+        toast.error(res.error || "Invalid GSTIN checksum");
+      }
+    } catch {
+      toast.error("GSTIN verification failed");
+    } finally {
+      setValidatingGstin(false);
     }
   };
 
@@ -170,15 +206,33 @@ export const CustomerFormPage = () => {
       <div className="flex-1 overflow-auto bg-canvas p-6">
         <form onSubmit={onSubmit} className="mx-auto max-w-4xl space-y-8" noValidate>
           
-          {/* GST Alert (Static UI for now) */}
-          <div className="rounded-md border border-sapphire/20 bg-sapphire/5 p-4 flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-sapphire" />
-            <p className="text-sm text-sapphire-dark">
-              Prefill Customer details from the GST portal using the Customer's GSTIN.
-              <button type="button" className="ml-2 font-medium text-sapphire hover:underline">
-                Prefill &gt;
-              </button>
-            </p>
+          {/* GST Alert */}
+          <div className="rounded-md border border-sapphire/20 bg-sapphire/5 p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Building2 className="h-5 w-5 text-sapphire" />
+              <p className="text-sm text-sapphire-dark">
+                Prefill & validate Customer details from GSTIN (State jurisdiction, PAN, and POS).
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={validatingGstin}
+              onClick={() => {
+                const g = watch("gstin");
+                if (!g) {
+                  const promptVal = window.prompt("Enter 15-character GSTIN to prefill:");
+                  if (promptVal) {
+                    setValue("gstin", promptVal.toUpperCase(), { shouldDirty: true });
+                    handleVerifyAndPrefillGstin(promptVal);
+                  }
+                } else {
+                  handleVerifyAndPrefillGstin(g);
+                }
+              }}
+              className="text-xs font-semibold text-sapphire hover:underline bg-white px-3 py-1.5 rounded border border-sapphire/30 shadow-sm"
+            >
+              {validatingGstin ? "Verifying..." : "Prefill from GSTIN >"}
+            </button>
           </div>
 
           {/* Core Info */}
@@ -294,8 +348,27 @@ export const CustomerFormPage = () => {
                   {customerType === "BUSINESS" && (
                     <div className="flex items-center gap-8">
                       <span className="w-48 text-sm font-medium text-muted">GSTIN</span>
-                      <div className="flex-1">
-                        <Input placeholder="GSTIN" {...register("gstin")} />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="e.g. 24AAACM1234A1Z1"
+                            maxLength={15}
+                            {...register("gstin")}
+                          />
+                          <button
+                            type="button"
+                            disabled={validatingGstin}
+                            onClick={() => handleVerifyAndPrefillGstin()}
+                            className="shrink-0 rounded border border-border bg-slate-50 px-3 text-xs font-semibold text-charcoal hover:bg-slate-100"
+                          >
+                            Verify
+                          </button>
+                        </div>
+                        {gstinInfo?.valid && (
+                          <p className="text-[11px] font-medium text-emerald">
+                            Verified: {gstinInfo.stateName} ({gstinInfo.stateCode}) · PAN {gstinInfo.pan}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}

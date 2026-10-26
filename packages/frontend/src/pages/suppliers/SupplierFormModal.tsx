@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Ban, CheckCircle2 } from "lucide-react";
+import { Ban, CheckCircle2, AlertCircle } from "lucide-react";
 import { supplierService } from "@/services/supplierService";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { taxService } from "@/services/taxService";
 
 const supplierSchema = z.object({
   code: z.string().min(1),
@@ -14,6 +15,11 @@ const supplierSchema = z.object({
   mobile: z.string().min(6),
   email: z.string().email().optional().or(z.literal("")),
   gstin: z.string().optional(),
+  pan: z.string().optional(),
+  gstTreatment: z.enum(["REGULAR", "COMPOSITION", "UNREGISTERED", "SEZ", "OVERSEAS"]).default("REGULAR").optional(),
+  isMsme: z.boolean().default(false).optional(),
+  msmeRegNo: z.string().optional(),
+  isRcm: z.boolean().default(false).optional(),
   city: z.string().min(1),
   category: z.enum(["BULLION", "DIAMOND", "KARIGAR", "GENERAL"]),
   creditLimit: z.coerce.number().nonnegative(),
@@ -33,6 +39,8 @@ interface SupplierFormModalProps {
 export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: SupplierFormModalProps) => {
   const [tab, setTab] = useState<"basic" | "financial" | "tax" | "notes">("basic");
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [gstinStatus, setGstinStatus] = useState<{ valid: boolean; stateName?: string; pan?: string } | null>(null);
+  const [validatingGstin, setValidatingGstin] = useState(false);
   const editing = Boolean(initialData?.id);
   const isInactive = initialData?.status === "INACTIVE";
 
@@ -44,6 +52,11 @@ export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: Suppl
       mobile: "",
       email: "",
       gstin: "",
+      pan: "",
+      gstTreatment: "REGULAR",
+      isMsme: false,
+      msmeRegNo: "",
+      isRcm: false,
       city: "",
       category: "GENERAL",
       creditLimit: 0,
@@ -59,13 +72,43 @@ export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: Suppl
       mobile: initialData?.mobile ?? "",
       email: initialData?.email ?? "",
       gstin: initialData?.gstin ?? "",
+      pan: initialData?.pan ?? "",
+      gstTreatment: initialData?.gstTreatment ?? "REGULAR",
+      isMsme: initialData?.isMsme ?? false,
+      msmeRegNo: initialData?.msmeRegNo ?? "",
+      isRcm: initialData?.isRcm ?? false,
       city: initialData?.city ?? "",
       category: initialData?.category ?? "GENERAL",
       creditLimit: initialData?.creditLimit ?? 0,
       creditDays: initialData?.creditDays ?? 0,
       notes: initialData?.notes ?? "",
     });
+    setGstinStatus(null);
   }, [form, initialData, open]);
+
+  const verifyGstin = async () => {
+    const raw = (form.getValues("gstin") || "").trim().toUpperCase();
+    if (!raw || raw.length !== 15) {
+      toast.error("Please enter a 15-character GSTIN to verify");
+      return;
+    }
+    setValidatingGstin(true);
+    try {
+      const res = await taxService.validateGstin(raw);
+      if (res.valid) {
+        setGstinStatus({ valid: true, stateName: res.stateName, pan: res.pan });
+        if (res.pan) form.setValue("pan", res.pan);
+        toast.success(`Valid GSTIN for ${res.stateName}. PAN auto-filled.`);
+      } else {
+        setGstinStatus({ valid: false });
+        toast.error(res.error || "Invalid GSTIN checksum");
+      }
+    } catch {
+      toast.error("GSTIN verification failed");
+    } finally {
+      setValidatingGstin(false);
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: async (payload: SupplierInput) =>
@@ -144,8 +187,93 @@ export const SupplierFormModal = ({ open, initialData, onClose, onSaved }: Suppl
         )}
 
         {tab === "tax" && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="text-xs text-muted">GSTIN<input className="mt-1 h-10 w-full rounded border border-border px-3 text-sm" {...form.register("gstin")} /></label>
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="text-xs text-muted block mb-1">GSTIN (15 Digits)</label>
+                <div className="flex gap-2">
+                  <input
+                    className="h-10 flex-1 rounded border border-border px-3 font-mono text-sm tracking-wider uppercase"
+                    maxLength={15}
+                    placeholder="24AAACM1234A1Z1"
+                    {...form.register("gstin")}
+                  />
+                  <button
+                    type="button"
+                    disabled={validatingGstin}
+                    onClick={verifyGstin}
+                    className="h-10 rounded border border-border bg-slate-50 px-3 text-xs font-semibold hover:bg-slate-100"
+                  >
+                    Verify
+                  </button>
+                </div>
+                {gstinStatus?.valid && (
+                  <p className="mt-1 text-[11px] font-medium text-emerald">
+                    ✓ Valid: {gstinStatus.stateName} · PAN: {gstinStatus.pan}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs text-muted block mb-1">Permanent Account Number (PAN)</label>
+                <input
+                  className="h-10 w-full rounded border border-border px-3 font-mono text-sm uppercase"
+                  maxLength={10}
+                  placeholder="AAACM1234A"
+                  {...form.register("pan")}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted block mb-1">GST Treatment / Registration Type</label>
+                <select
+                  className="h-10 w-full rounded border border-border px-3 text-sm"
+                  {...form.register("gstTreatment")}
+                >
+                  <option value="REGULAR">Registered Regular (Full ITC)</option>
+                  <option value="COMPOSITION">Composition Scheme (No ITC)</option>
+                  <option value="UNREGISTERED">Unregistered Business (URD)</option>
+                  <option value="SEZ">Special Economic Zone (SEZ)</option>
+                  <option value="OVERSEAS">Overseas (Import of Goods/Services)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted block mb-1">Reverse Charge Mechanism (RCM)</label>
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 text-gold rounded"
+                    {...form.register("isRcm")}
+                  />
+                  <span className="text-xs text-charcoal">Purchases subject to Reverse Charge by default</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border bg-slate-50/70 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-charcoal block">MSME Registration (Sec 43B(h))</span>
+                  <span className="text-[11px] text-muted">Statutory 45-day payment compliance tracker</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 text-gold rounded"
+                  {...form.register("isMsme")}
+                />
+              </div>
+              {form.watch("isMsme") && (
+                <div>
+                  <label className="text-[11px] text-muted block mb-1">Udyam Registration Number</label>
+                  <input
+                    className="h-9 w-full rounded border border-border px-3 text-xs uppercase"
+                    placeholder="UDYAM-GJ-01-0012345"
+                    {...form.register("msmeRegNo")}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
 

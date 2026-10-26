@@ -242,6 +242,57 @@ export const taxService = {
     const response = await api.get("/tax/hsn");
     return response.data.data as HsnMasterRow[];
   },
+  async getTaxCodes() {
+    const response = await api.get("/tax/codes");
+    return response.data.data;
+  },
+  async validateGstin(gstin: string) {
+    const response = await api.post("/tax/validate-gstin", { gstin });
+    return response.data.data as {
+      isValid: boolean;
+      gstin: string;
+      stateCode: string;
+      stateName: string;
+      pan: string;
+      entityNumber: string;
+      checksumValid: boolean;
+      error?: string;
+    };
+  },
+  async calculateTax(payload: {
+    documentType?: "INVOICE" | "BILL" | "EXPENSE" | "CREDIT_NOTE" | "DEBIT_NOTE";
+    documentNo?: string;
+    supplierGstin?: string | null;
+    supplierState?: string | null;
+    recipientGstin?: string | null;
+    recipientState?: string | null;
+    placeOfSupply?: string | null;
+    treatment?: string | null;
+    isExport?: boolean;
+    isLut?: boolean;
+    isTaxInclusive?: boolean;
+    paymentMethodAccountId?: number | null;
+    lines: Array<{
+      amount: number;
+      rate: number;
+      cessRate?: number;
+      cessAmount?: number;
+      discountPct?: number;
+      isRcm?: boolean;
+      itcEligibility?: string;
+    }>;
+  }) {
+    const response = await api.post("/tax/calculate", payload);
+    return response.data.data;
+  },
+  async postSettlement(payload: { month: number; year: number }) {
+    const response = await api.post("/tax/gst/settle", payload);
+    return response.data.data;
+  },
+  async getItcRegister(params?: { from?: string; to?: string }) {
+    const response = await api.get("/tax/registers/itc", { params });
+    return response.data.data;
+  },
   async createHsn(payload: HsnPayload) {
     const response = await api.post("/tax/hsn", payload);
     return response.data.data as HsnMasterRow;

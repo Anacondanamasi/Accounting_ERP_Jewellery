@@ -454,6 +454,137 @@ export const resolveAccountingAccounts = async (
     keywords: ["advance to supplier", "supplier advance", "advances recoverable"],
   });
 
+  const outputCgstId = await resolve({
+    type: "liability",
+    preferredName: "Output CGST Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2201",
+    keywords: ["output cgst", "cgst payable", "output central gst"],
+  });
+  const outputSgstId = await resolve({
+    type: "liability",
+    preferredName: "Output SGST/UTGST Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2202",
+    keywords: ["output sgst", "output utgst", "sgst payable", "output state gst"],
+  });
+  const outputIgstId = await resolve({
+    type: "liability",
+    preferredName: "Output IGST Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2203",
+    keywords: ["output igst", "igst payable", "output integrated gst"],
+  });
+  const outputCessId = await resolve({
+    type: "liability",
+    preferredName: "Output Cess Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2204",
+    keywords: ["output cess", "cess payable", "gst cess"],
+  });
+  const rcmOutputCgstId = await resolve({
+    type: "liability",
+    preferredName: "RCM Output CGST Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2211",
+    keywords: ["rcm output cgst", "rcm cgst payable"],
+  });
+  const rcmOutputSgstId = await resolve({
+    type: "liability",
+    preferredName: "RCM Output SGST Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2212",
+    keywords: ["rcm output sgst", "rcm sgst payable"],
+  });
+  const rcmOutputIgstId = await resolve({
+    type: "liability",
+    preferredName: "RCM Output IGST Payable",
+    preferredGroup: "Duties & Taxes",
+    preferredCode: "2213",
+    keywords: ["rcm output igst", "rcm igst payable"],
+  });
+
+  const inputCgstId = await resolve({
+    type: "asset",
+    preferredName: "Input CGST Receivable",
+    preferredGroup: "Current Assets",
+    preferredCode: "1201",
+    keywords: ["input cgst", "cgst receivable", "input central gst", "cgst itc"],
+  });
+  const inputSgstId = await resolve({
+    type: "asset",
+    preferredName: "Input SGST/UTGST Receivable",
+    preferredGroup: "Current Assets",
+    preferredCode: "1202",
+    keywords: ["input sgst", "input utgst", "sgst receivable", "input state gst", "sgst itc"],
+  });
+  const inputIgstId = await resolve({
+    type: "asset",
+    preferredName: "Input IGST Receivable",
+    preferredGroup: "Current Assets",
+    preferredCode: "1203",
+    keywords: ["input igst", "igst receivable", "input integrated gst", "igst itc"],
+  });
+  const inputCessId = await resolve({
+    type: "asset",
+    preferredName: "Input Cess Receivable",
+    preferredGroup: "Current Assets",
+    preferredCode: "1204",
+    keywords: ["input cess", "cess receivable", "input cess itc"],
+  });
+  const inputRcmCgstId = await resolve({
+    type: "asset",
+    preferredName: "Input ITC on RCM (CGST)",
+    preferredGroup: "Current Assets",
+    preferredCode: "1211",
+    keywords: ["input rcm cgst", "itc on rcm cgst"],
+  });
+  const inputRcmSgstId = await resolve({
+    type: "asset",
+    preferredName: "Input ITC on RCM (SGST)",
+    preferredGroup: "Current Assets",
+    preferredCode: "1212",
+    keywords: ["input rcm sgst", "itc on rcm sgst"],
+  });
+  const inputRcmIgstId = await resolve({
+    type: "asset",
+    preferredName: "Input ITC on RCM (IGST)",
+    preferredGroup: "Current Assets",
+    preferredCode: "1213",
+    keywords: ["input rcm igst", "itc on rcm igst"],
+  });
+
+  const itcBlockedId = await resolve({
+    type: "expense",
+    preferredName: "Ineligible / Blocked ITC u/s 17(5)",
+    preferredGroup: "Operating Expenses",
+    preferredCode: "5100",
+    keywords: ["blocked itc", "ineligible itc", "itc 17(5)", "17(5)"],
+  });
+
+  const gstElectronicCashId = await resolve({
+    type: "asset",
+    preferredName: "GST Electronic Cash Ledger",
+    preferredGroup: "Current Assets",
+    preferredCode: "1251",
+    keywords: ["electronic cash ledger", "gst cash ledger", "pmt-06"],
+  });
+  const gstElectronicCreditId = await resolve({
+    type: "asset",
+    preferredName: "GST Electronic Credit Ledger",
+    preferredGroup: "Current Assets",
+    preferredCode: "1252",
+    keywords: ["electronic credit ledger", "gst credit ledger"],
+  });
+
+  const roundOffId = await resolve({
+    type: "expense",
+    preferredName: "Round Off / Cash Discount Adjustment",
+    preferredGroup: "Operating Expenses",
+    preferredCode: "5999",
+    keywords: ["round off", "rounding", "discount adjustment"],
+  });
+
   return {
     receivableId,
     payableId,
@@ -461,6 +592,24 @@ export const resolveAccountingAccounts = async (
     purchaseId,
     outputGstId,
     inputGstId,
+    outputCgstId,
+    outputSgstId,
+    outputIgstId,
+    outputCessId,
+    rcmOutputCgstId,
+    rcmOutputSgstId,
+    rcmOutputIgstId,
+    inputCgstId,
+    inputSgstId,
+    inputIgstId,
+    inputCessId,
+    inputRcmCgstId,
+    inputRcmSgstId,
+    inputRcmIgstId,
+    itcBlockedId,
+    gstElectronicCashId,
+    gstElectronicCreditId,
+    roundOffId,
     cashId,
     bankId,
     customerAdvanceId,

@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { formatCurrency } from "@/lib/formatters";
 import { invoiceService } from "@/services/invoiceService";
+import { taxService } from "@/services/taxService";
+import { JournalPreviewModal } from "@/components/accounting/JournalPreviewModal";
 import { customerService } from "@/services/customerService";
 import { inventoryService } from "@/services/inventoryService";
 import { useInvoiceCalc } from "@/hooks/useInvoiceCalc";
@@ -39,6 +41,8 @@ const defaultLine: InvoiceFormInput["lines"][number] = {
 };
 
 export const InvoiceFormPage = () => {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
   const navigate = useNavigate();
   const { id } = useParams();
   const editing = Boolean(id);
@@ -139,11 +143,11 @@ export const InvoiceFormPage = () => {
     },
   });
 
-  const saveDraftMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async (payload: InvoiceFormInput) =>
       editing ? invoiceService.update(Number(id), payload) : invoiceService.create(payload),
     onSuccess: (record) => {
-      toast.success(editing ? "Invoice updated" : "Invoice draft created");
+      toast.success(editing ? "Invoice saved & ledger updated" : "Invoice created & posted to ledger");
       if (!editing && record?.id) {
         navigate(`/invoices/${record.id}/edit`);
       } else {
@@ -151,7 +155,24 @@ export const InvoiceFormPage = () => {
       }
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Unable to save draft");
+      toast.error(err.response?.data?.message || "Unable to save invoice");
+    },
+  });
+
+  const saveAndNewMutation = useMutation({
+    mutationFn: async (payload: InvoiceFormInput) =>
+      editing ? invoiceService.update(Number(id), payload) : invoiceService.create(payload),
+    onSuccess: () => {
+      toast.success("Invoice created & posted to ledger");
+      if (editing) {
+        navigate("/invoices/new");
+      } else {
+        reset();
+        void refetchExisting();
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Unable to save invoice");
     },
   });
 
@@ -295,13 +316,18 @@ export const InvoiceFormPage = () => {
     await saveAndCloseMutation.mutateAsync(values);
   }, onInvalid);
 
-  const onSaveDraft = handleSubmit(async (values) => {
-    await saveDraftMutation.mutateAsync(values);
+  const onSave = handleSubmit(async (values) => {
+    await saveMutation.mutateAsync(values);
+  }, onInvalid);
+
+  const onSaveAndNew = handleSubmit(async (values) => {
+    await saveAndNewMutation.mutateAsync(values);
   }, onInvalid);
 
   const busy =
     saveAndCloseMutation.isPending ||
-    saveDraftMutation.isPending ||
+    saveMutation.isPending ||
+    saveAndNewMutation.isPending ||
     duplicateMutation.isPending ||
     postMutation.isPending ||
     voidMutation.isPending ||
@@ -329,97 +355,24 @@ export const InvoiceFormPage = () => {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => navigate("/invoices")} type="button">
-              Cancel
-            </Button>
-
-            {editing && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => duplicateMutation.mutate()}
-                  disabled={duplicateMutation.isPending || busy}
-                  type="button"
-                >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  Duplicate
-                </Button>
-
-                {existing?.status === "DRAFT" && (
-                  <Button
-                    variant="outline"
-                    onClick={() => postMutation.mutate()}
-                    disabled={postMutation.isPending || busy}
-                    type="button"
-                  >
-                    <Send className="mr-1.5 h-3.5 w-3.5" />
-                    Post
-                  </Button>
-                )}
-
-                <Button
-                  variant="outline"
-                  onClick={() => navigate(`/invoices/${id}`)}
-                  type="button"
-                >
-                  <Eye className="mr-1.5 h-3.5 w-3.5" />
-                  View Tax Invoice
-                </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={() => void handleDownloadPdf()}
-                  type="button"
-                >
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
-                  PDF
-                </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={() => void handlePrintPdf()}
-                  type="button"
-                >
-                  <Printer className="mr-1.5 h-3.5 w-3.5" />
-                  Print
-                </Button>
-
-                {Number(existing?.balanceDue) > 0 && existing?.status !== "VOID" && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setPaymentOpen(true)}
-                    type="button"
-                  >
-                    <CreditCard className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
-                    Record Payment
-                  </Button>
-                )}
-
-                {existing?.status !== "VOID" && (
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      if (window.confirm("Are you sure you want to void this invoice?")) {
-                        voidMutation.mutate();
-                      }
-                    }}
-                    disabled={voidMutation.isPending || busy}
-                    type="button"
-                  >
-                    Void
-                  </Button>
-                )}
-              </>
-            )}
-
             <Button
               variant="outline"
-              loading={saveDraftMutation.isPending}
-              onClick={() => onSaveDraft()}
+              loading={saveMutation.isPending}
+              onClick={() => onSave()}
               type="button"
             >
               <Save className="mr-1.5 h-3.5 w-3.5" />
-              Save Draft
+              Save
+            </Button>
+
+            <Button
+              variant="outline"
+              loading={saveAndNewMutation.isPending}
+              onClick={() => onSaveAndNew()}
+              type="button"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Save & New
             </Button>
 
             <Button
@@ -711,7 +664,7 @@ export const InvoiceFormPage = () => {
                 <span className="font-mono">{formatCurrency(totals.taxableAmount)}</span>
               </div>
               <div className="flex justify-between border-b border-white/10 pb-2">
-                <span className="text-white/60">GST (3%)</span>
+                <span className="text-white/60">GST Breakdown</span>
                 <span className="font-mono">{formatCurrency(totals.taxTotal)}</span>
               </div>
               <div className="flex justify-between pt-4">
@@ -758,6 +711,18 @@ export const InvoiceFormPage = () => {
           </div>
         </div>
       )}
+
+      {/* Live Journal Preview Modal */}
+      <JournalPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        documentType="Tax Invoice"
+        documentNo={existing?.invoiceNo || "DRAFT-INV"}
+        posDescription={previewData?.posResult?.description}
+        supplyType={previewData?.posResult?.supplyType}
+        lines={previewData?.journalPreview || []}
+        taxSummary={previewData?.taxSummary}
+      />
 
       {/* Record Payment Modal */}
       {editing && existing && (

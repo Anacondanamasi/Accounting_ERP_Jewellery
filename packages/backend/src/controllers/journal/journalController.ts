@@ -133,7 +133,9 @@ export const createJournalEntry = async (req: Request, res: Response) => {
       entryNo: `JNL-${Date.now()}`,
       date: new Date(header.date),
       narration: header.narration,
-      status: "DRAFT",
+      status: "POSTED",
+      postedAt: new Date(),
+      postedBy: getActor(req),
       createdBy: getActor(req),
       lines: {
         create: lines.map((line) => ({
@@ -149,7 +151,7 @@ export const createJournalEntry = async (req: Request, res: Response) => {
     include: { lines: true },
   });
 
-  return created(res, entry, "Journal entry created");
+  return created(res, entry, "Journal entry created and posted");
 };
 
 export const updateJournalEntry = async (req: Request, res: Response) => {
@@ -204,16 +206,11 @@ export const updateJournalEntry = async (req: Request, res: Response) => {
 
 export const postJournalEntry = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
-
-  try {
-    const entry = await prisma.journalEntry.update({
-      where: { id: Number(req.params.id), companyId },
-      data: { status: "POSTED", postedAt: new Date(), postedBy: getActor(req) },
-    });
-    return ok(res, entry, "Journal entry posted");
-  } catch {
-    return fail(res, 404, "JOURNAL_NOT_FOUND", "Journal entry not found");
-  }
+  const entry = await prisma.journalEntry.findFirst({
+    where: { id: Number(req.params.id), companyId },
+  });
+  if (!entry) return fail(res, 404, "JOURNAL_NOT_FOUND", "Journal entry not found");
+  return ok(res, entry, "Journal entry is active");
 };
 
 export const reverseJournalEntry = async (req: Request, res: Response) => {

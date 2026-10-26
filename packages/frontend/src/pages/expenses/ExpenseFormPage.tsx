@@ -11,6 +11,9 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { accountsService } from "@/services/accountsService";
 import { supplierService } from "@/services/supplierService";
 import { expenseService } from "@/services/expenseService";
+import { taxService } from "@/services/taxService";
+import { JournalPreviewModal } from "@/components/accounting/JournalPreviewModal";
+import { FileText } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 
 const expenseFormSchema = z.object({
@@ -28,6 +31,8 @@ const expenseFormSchema = z.object({
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
 export const ExpenseFormPage = () => {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
   const navigate = useNavigate();
   const { id } = useParams();
   const editing = Boolean(id);
@@ -99,6 +104,29 @@ export const ExpenseFormPage = () => {
       group.includes("cost of goods")
     );
   });
+
+  const handleOpenPreview = async () => {
+    try {
+      const vals = form.getValues();
+      const res = await taxService.calculateTax({
+        documentType: "EXPENSE",
+        documentNo: "DRAFT-EXP",
+        paymentMethodAccountId: Number(vals.paymentMethodLedgerId),
+        isTaxInclusive: Boolean(vals.isTaxInclusive),
+        lines: [
+          {
+            amount: Number(vals.amount || 0),
+            rate: Number(vals.gstRate || 0),
+            itcEligibility: vals.itcEligibility,
+          },
+        ],
+      });
+      setPreviewData(res);
+      setIsPreviewOpen(true);
+    } catch {
+      toast.error("Could not generate journal preview");
+    }
+  };
 
   const cashBankOptions = cashBankAccounts.map((a: any) => ({
     value: String(a.id),

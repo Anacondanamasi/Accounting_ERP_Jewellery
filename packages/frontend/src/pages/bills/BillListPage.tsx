@@ -61,8 +61,8 @@ export const BillListPage = () => {
             type: "select",
             label: "Status",
             options: [
-              { label: "Draft", value: "DRAFT" },
-              { label: "Posted", value: "POSTED" },
+              { label: "Open", value: "OPEN" },
+              { label: "Void", value: "VOID" },
               { label: "Paid", value: "PAID" },
               { label: "Partial", value: "PARTIAL" },
             ],

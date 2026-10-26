@@ -2,6 +2,7 @@ import type { Request } from "express";
 import { Router } from "express";
 import { z } from "zod";
 import { resolveAccountingAccounts, upsertPostedJournalForSource } from "../lib/accounting";
+import { evaluatePlaceOfSupply, generateGstJournalPosting, type DocumentTaxSummary } from "../lib/gst";
 import { prisma } from "../lib/prisma";
 import { ok, created, fail } from "../lib/apiResponse";
 import { makeDocumentNumber, roundMoney } from "../lib/documents";
@@ -86,37 +87,43 @@ const registerNoteRoutes = (basePath: string, type: "CREDIT_NOTE" | "DEBIT_NOTE"
         include: { lines: true },
       });
 
+            const companyRecord = await tx.company.findUnique({ where: { id: companyId } });
       const accounts = await resolveAccountingAccounts(tx, companyId, actor(req));
       const sourceKey = `NOTE:${createdRow.id}`;
-      if (type === "CREDIT_NOTE") {
-        await upsertPostedJournalForSource(tx, {
-          companyId,
-          sourceKey,
-          entryPrefix: "CRN",
-          date: createdRow.date,
-          narration: `Credit Note ${createdRow.noteNo}`,
-          actor: actor(req),
-          lines: [
-            { accountId: accounts.salesId, debit: Number(createdRow.subTotal), narration: `Credit Note ${createdRow.noteNo}` },
-            { accountId: accounts.outputGstId, debit: Number(createdRow.taxTotal), narration: `GST reversal ${createdRow.noteNo}` },
-            { accountId: accounts.receivableId, credit: Number(createdRow.grandTotal), narration: `Credit Note ${createdRow.noteNo}` },
-          ],
-        });
-      } else {
-        await upsertPostedJournalForSource(tx, {
-          companyId,
-          sourceKey,
-          entryPrefix: "DBN",
-          date: createdRow.date,
-          narration: `Debit Note ${createdRow.noteNo}`,
-          actor: actor(req),
-          lines: [
-            { accountId: accounts.purchaseId, debit: Number(createdRow.subTotal), narration: `Debit Note ${createdRow.noteNo}` },
-            { accountId: accounts.inputGstId, debit: Number(createdRow.taxTotal), narration: `Input GST ${createdRow.noteNo}` },
-            { accountId: accounts.payableId, credit: Number(createdRow.grandTotal), narration: `Debit Note ${createdRow.noteNo}` },
-          ],
-        });
-      }
+      const posResult = evaluatePlaceOfSupply({
+        supplierState: companyRecord?.state || "Gujarat",
+        placeOfSupply: companyRecord?.state || "Gujarat",
+      });
+      const taxSummary: DocumentTaxSummary = {
+        lines: [],
+        subTotal: Number(createdRow.subTotal),
+        totalDiscount: 0,
+        taxableAmount: Number(createdRow.subTotal),
+        cgst: Math.round((Number(createdRow.taxTotal) / 2) * 100) / 100,
+        sgst: Math.round((Number(createdRow.taxTotal) / 2) * 100) / 100,
+        igst: 0,
+        cess: 0,
+        taxTotal: Number(createdRow.taxTotal),
+        roundOff: 0,
+        grandTotal: Number(createdRow.grandTotal),
+        rateBreakup: [],
+      };
+      const postingLines = generateGstJournalPosting({
+        documentType: type,
+        documentNo: createdRow.noteNo,
+        posResult,
+        taxSummary,
+        accounts,
+      });
+      await upsertPostedJournalForSource(tx, {
+        companyId,
+        sourceKey,
+        entryPrefix: prefix,
+        date: createdRow.date,
+        narration: `${type.replace("_", " ")} ${createdRow.noteNo}`,
+        actor: actor(req),
+        lines: postingLines,
+      });
 
       return createdRow;
     }, {

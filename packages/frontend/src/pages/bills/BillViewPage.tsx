@@ -69,7 +69,7 @@ export const BillViewPage = () => {
           <>
             <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => navigate(`/bills/${id}/edit`)} type="button">Edit</button>
             <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => duplicateMutation.mutate()} type="button">Duplicate</button>
-            <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => postMutation.mutate()} type="button">Post</button>
+            
             <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => setShowPayment((prev) => !prev)} type="button">Record Payment</button>
             <button className="h-10 rounded-btn bg-ruby px-4 text-sm text-white" onClick={() => voidMutation.mutate()} type="button">Void</button>
           </>

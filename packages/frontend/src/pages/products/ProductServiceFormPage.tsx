@@ -14,10 +14,11 @@ type Tab = "sales" | "purchases" | "inventory";
 
 const TAX_RATES = [
   { label: "No Tax (0%)", value: 0 },
-  { label: "GST 3%", value: 3 },
-  { label: "GST 5%", value: 5 },
+  { label: "GST 0.25% (Rough Stones / Bullion)", value: 0.25 },
+  { label: "GST 3% (Jewellery Standard)", value: 3 },
+  { label: "GST 5% (Job Work / Services)", value: 5 },
   { label: "GST 12%", value: 12 },
-  { label: "GST 18%", value: 18 },
+  { label: "GST 18% (Standard Services / Repair)", value: 18 },
   { label: "GST 28%", value: 28 },
 ];
 
@@ -25,6 +26,7 @@ type FormState = {
   code: string;
   name: string;
   description: string;
+  hsnSacCode: string;
   type: "PRODUCT" | "SERVICE";
   isTracked: boolean;
   isSold: boolean;
@@ -37,6 +39,8 @@ type FormState = {
   purchasePrice: string;
   purchaseAccountId: string;
   purchaseTaxRate: number;
+  itcEligibility: "ELIGIBLE" | "INELIGIBLE" | "BLOCKED_17_5";
+  isRcm: boolean;
   inventoryAssetAccountId: string;
   openingQuantity: string;
   openingValue: string;
@@ -49,23 +53,26 @@ const defaultForm: FormState = {
   code: "",
   name: "",
   description: "",
+  hsnSacCode: "7113",
   type: "PRODUCT",
   isTracked: false,
   isSold: true,
   salesDescription: "",
   salesPrice: "",
   salesAccountId: "",
-  salesTaxRate: 0,
+  salesTaxRate: 3,
   isPurchased: true,
   purchaseDescription: "",
   purchasePrice: "",
   purchaseAccountId: "",
-  purchaseTaxRate: 0,
+  purchaseTaxRate: 3,
+  itcEligibility: "ELIGIBLE",
+  isRcm: false,
   inventoryAssetAccountId: "",
   openingQuantity: "",
   openingValue: "",
   reorderLevel: "",
-  unit: "pcs",
+  unit: "g",
   status: "ACTIVE",
 };
 
@@ -105,6 +112,7 @@ export const ProductServiceFormPage = () => {
       code: existing.code,
       name: existing.name,
       description: existing.description ?? "",
+      hsnSacCode: (existing as any).hsnSacCode ?? (existing as any).hsnCode ?? "7113",
       type: existing.type as "PRODUCT" | "SERVICE",
       isTracked: existing.isTracked,
       isSold: existing.isSold,
@@ -117,6 +125,8 @@ export const ProductServiceFormPage = () => {
       purchasePrice: String(existing.purchasePrice),
       purchaseAccountId: existing.purchaseAccountId ? String(existing.purchaseAccountId) : "",
       purchaseTaxRate: existing.purchaseTaxRate,
+      itcEligibility: (existing as any).itcEligibility ?? "ELIGIBLE",
+      isRcm: (existing as any).isRcm ?? false,
       inventoryAssetAccountId: existing.inventoryAssetAccountId ? String(existing.inventoryAssetAccountId) : "",
       openingQuantity: String(existing.openingQuantity),
       openingValue: String(existing.openingValue),
@@ -146,6 +156,8 @@ export const ProductServiceFormPage = () => {
         code: form.code.trim(),
         name: form.name.trim(),
         description: form.description || undefined,
+        hsnCode: form.hsnSacCode || undefined,
+        hsnSacCode: form.hsnSacCode || undefined,
         type: form.type,
         isTracked: form.isTracked && form.type === "PRODUCT",
         isSold: form.isSold,
@@ -158,6 +170,8 @@ export const ProductServiceFormPage = () => {
         purchasePrice: Number(form.purchasePrice) || 0,
         purchaseAccountId: form.purchaseAccountId ? Number(form.purchaseAccountId) : undefined,
         purchaseTaxRate: form.purchaseTaxRate,
+        itcEligibility: form.itcEligibility,
+        isRcm: form.isRcm,
         inventoryAssetAccountId: form.inventoryAssetAccountId ? Number(form.inventoryAssetAccountId) : undefined,
         openingQuantity: Number(form.openingQuantity) || 0,
         openingValue: Number(form.openingValue) || 0,
@@ -242,6 +256,48 @@ export const ProductServiceFormPage = () => {
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
           />
+          <div className="md:col-span-2 space-y-1.5">
+            <label className="text-xs font-medium text-muted block">HSN / SAC Code (Statutory)</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className="h-10 w-44 rounded border border-border px-3 font-mono text-sm uppercase focus:border-gold focus:outline-none"
+                placeholder="e.g. 7113"
+                value={form.hsnSacCode}
+                onChange={(e) => set("hsnSacCode", e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-muted text-[11px]">Quick:</span>
+                <button
+                  type="button"
+                  onClick={() => set("hsnSacCode", "7113")}
+                  className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-1 text-[11px] text-charcoal font-medium"
+                >
+                  7113 (Jewellery)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set("hsnSacCode", "7108")}
+                  className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-1 text-[11px] text-charcoal font-medium"
+                >
+                  7108 (Bullion)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set("hsnSacCode", "7102")}
+                  className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-1 text-[11px] text-charcoal font-medium"
+                >
+                  7102 (Diamonds)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set("hsnSacCode", "9988")}
+                  className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-1 text-[11px] text-charcoal font-medium"
+                >
+                  9988 (Job Work)
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Item Type */}
@@ -428,6 +484,30 @@ export const ProductServiceFormPage = () => {
                         <option key={t.value} value={t.value}>{t.label}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Input Tax Credit (ITC) Eligibility</label>
+                    <select
+                      className="h-10 w-full rounded border border-border bg-white px-3 text-sm focus:border-gold focus:outline-none"
+                      value={form.itcEligibility}
+                      onChange={(e) => set("itcEligibility", e.target.value as any)}
+                    >
+                      <option value="ELIGIBLE">Eligible (Normal Business Input)</option>
+                      <option value="INELIGIBLE">Ineligible (Non-business / Exempt)</option>
+                      <option value="BLOCKED_17_5">Blocked Credit u/s 17(5)</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <input
+                      type="checkbox"
+                      id="rcm-toggle"
+                      checked={form.isRcm}
+                      onChange={(e) => set("isRcm", e.target.checked)}
+                      className="h-4 w-4 text-gold rounded"
+                    />
+                    <label htmlFor="rcm-toggle" className="text-xs text-charcoal cursor-pointer">
+                      Purchase is subject to Reverse Charge (RCM)
+                    </label>
                   </div>
                 </div>
               )}

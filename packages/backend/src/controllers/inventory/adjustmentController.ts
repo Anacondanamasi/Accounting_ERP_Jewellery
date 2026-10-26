@@ -69,38 +69,65 @@ export const createAdjustment = async (req: Request, res: Response) => {
   const parsed = adjustmentSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid adjustment payload", parsed.error.issues);
 
-  const row = await prisma.inventoryAdjustment.create({
-    data: {
-      companyId,
-      adjNo: makeDocumentNumber("ADJ"),
-      date: new Date(parsed.data.date),
-      type: parsed.data.type,
-      reason: parsed.data.reason,
-      supportingDocUrl: parsed.data.supportingDocUrl,
-      status: "DRAFT",
-      createdBy: getActor(req),
-      lines: {
-        create: parsed.data.lines.map((line) => ({
+  const actor = getActor(req);
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.inventoryAdjustment.create({
+      data: {
+        companyId,
+        adjNo: makeDocumentNumber("ADJ"),
+        date: new Date(parsed.data.date),
+        type: parsed.data.type,
+        reason: parsed.data.reason,
+        supportingDocUrl: parsed.data.supportingDocUrl,
+        status: "POSTED",
+        createdBy: actor,
+        lines: {
+          create: parsed.data.lines.map((line) => ({
+            companyId,
+            itemId: line.itemId,
+            currentQty: roundWeight(line.currentQty),
+            currentWt: roundWeight(line.currentWt),
+            adjustedQty: roundWeight(line.adjustedQty),
+            adjustedWt: roundWeight(line.adjustedWt),
+            diffQty: roundWeight(line.diffQty),
+            diffWt: roundWeight(line.diffWt),
+            oldRate: roundMoney(line.oldRate),
+            newRate: roundMoney(line.newRate),
+            valueImpact: roundMoney(line.valueImpact),
+            accountId: line.accountId,
+            createdBy: actor,
+          })),
+        },
+      },
+      include: includeLines,
+    });
+
+    for (const line of created.lines) {
+      await tx.stockLedger.create({
+        data: {
           companyId,
           itemId: line.itemId,
-          currentQty: roundWeight(line.currentQty),
-          currentWt: roundWeight(line.currentWt),
-          adjustedQty: roundWeight(line.adjustedQty),
-          adjustedWt: roundWeight(line.adjustedWt),
-          diffQty: roundWeight(line.diffQty),
-          diffWt: roundWeight(line.diffWt),
-          oldRate: roundMoney(line.oldRate),
-          newRate: roundMoney(line.newRate),
-          valueImpact: roundMoney(line.valueImpact),
-          accountId: line.accountId,
-          createdBy: getActor(req),
-        })),
-      },
-    },
-    include: includeLines,
+          transactionType: "ADJUSTMENT",
+          referenceType: "INVENTORY_ADJUSTMENT",
+          referenceId: created.id,
+          issuedQty: Number(line.diffQty) < 0 ? Math.abs(Number(line.diffQty)) : 0,
+          issuedWt: Number(line.diffWt) < 0 ? Math.abs(Number(line.diffWt)) : 0,
+          receivedQty: Number(line.diffQty) > 0 ? Number(line.diffQty) : 0,
+          receivedWt: Number(line.diffWt) > 0 ? Number(line.diffWt) : 0,
+          balanceQty: Number(line.adjustedQty),
+          balanceWt: Number(line.adjustedWt),
+          rate: line.newRate,
+          value: line.valueImpact,
+          narration: created.reason,
+          createdBy: actor,
+        },
+      });
+    }
+
+    return created;
   });
 
-  return created(res, row, "Adjustment draft created");
+  return created(res, row, "Adjustment created and posted to inventory ledger");
 };
 
 export const updateAdjustment = async (req: Request, res: Response) => {
@@ -212,13 +239,13 @@ const transitionAdjustment = async (
 };
 
 export const submitAdjustment = (req: Request, res: Response) =>
-  transitionAdjustment(req, res, "DRAFT", "SUBMITTED", "Submitted for approval");
+  ok(res, true, "Adjustment is active");
 
 export const approveAdjustment = (req: Request, res: Response) =>
-  transitionAdjustment(req, res, "SUBMITTED", "APPROVED", "Adjustment approved");
+  ok(res, true, "Adjustment is active");
 
 export const postAdjustment = (req: Request, res: Response) =>
-  transitionAdjustment(req, res, "APPROVED", "POSTED", "Adjustment posted");
+  ok(res, true, "Adjustment is active");
 
 const revaluationSchema = z.object({
   date: z.string().min(1),

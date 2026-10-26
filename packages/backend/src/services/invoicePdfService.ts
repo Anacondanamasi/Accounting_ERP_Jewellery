@@ -198,11 +198,13 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
       doc.font("Helvetica-Bold").text("DUE DATE:", margin + 360, y + 4);
       doc.font("Helvetica").text(invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-GB") : "-", margin + 420, y + 4);
 
-      // Row 2: Place of Supply & Terms
+      // Row 2: Place of Supply, Terms & Reverse Charge (Rule 46(p))
       doc.font("Helvetica-Bold").text("PLACE OF SUPPLY:", margin + 6, y + 16);
       doc.font("Helvetica").text(`${customerStateInfo.code} - ${customerStateInfo.state}`, margin + 95, y + 16);
-      doc.font("Helvetica-Bold").text("MODE OF PAYMENT:", margin + 280, y + 16);
-      doc.font("Helvetica").text(invoice.paymentMode || "Credit / Bank Transfer", margin + 380, y + 16);
+      doc.font("Helvetica-Bold").text("MODE:", margin + 260, y + 16);
+      doc.font("Helvetica").text(invoice.paymentMode || "Credit / Bank", margin + 295, y + 16);
+      doc.font("Helvetica-Bold").text("RCM APPLICABLE:", margin + 410, y + 16);
+      doc.font("Helvetica").text(invoice.isRcm || invoice.reverseCharge === "Y" ? "YES" : "NO", margin + 490, y + 16);
 
       // Row 3: Metal Rates
       doc.font("Helvetica-Bold").text("METAL RATES:", margin + 6, y + 27);
@@ -318,23 +320,47 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
       const rightColWidth = contentWidth - leftColWidth;
       const bottomStartY = y;
 
-      // Left: HSN Summary Table
+      // Left: Dynamic Multi-HSN Summary Table (Rule 46 compliant)
       doc.rect(margin, y, leftColWidth, 14).fillColor("#F1F5F9").fill();
       doc.fontSize(6.5).font("Helvetica-Bold").fillColor("#000000");
-      doc.text("HSN/SAC SUMMARY", margin + 6, y + 4);
+      doc.text("HSN/SAC SUMMARY BREAKDOWN", margin + 6, y + 4);
 
-      y += 14;
-      doc.fontSize(6.5).font("Helvetica").fillColor("#000000");
-      doc.text("HSN: 7113", margin + 6, y + 3);
-      doc.text(`Taxable: Rs. ${formatINR(totalTaxable)}`, margin + 65, y + 3);
-      if (isInterState) {
-        doc.text(`IGST (3%): Rs. ${formatINR(invoice.igst || totalTax)}`, margin + 175, y + 3);
-      } else {
-        doc.text(`CGST (1.5%): Rs. ${formatINR(invoice.cgst || totalTax / 2)}`, margin + 155, y + 3);
-        doc.text(`SGST (1.5%): Rs. ${formatINR(invoice.sgst || totalTax / 2)}`, margin + 245, y + 3);
+      // Group lines by HSN
+      const hsnSummaryMap: Record<string, { hsn: string; taxable: number; tax: number; rate: number }> = {};
+      lines.forEach((l: any) => {
+        const code = String(l.hsnCode || "7113");
+        const taxable = Number(l.amount || 0);
+        const lineTotal = Number(l.total || 0);
+        const tax = lineTotal - taxable;
+        const rate = Number(l.gstPct || (taxable > 0 ? (tax / taxable) * 100 : 3));
+        if (!hsnSummaryMap[code]) {
+          hsnSummaryMap[code] = { hsn: code, taxable: 0, tax: 0, rate };
+        }
+        hsnSummaryMap[code].taxable += taxable;
+        hsnSummaryMap[code].tax += tax;
+      });
+
+      const hsnRows = Object.values(hsnSummaryMap);
+      if (hsnRows.length === 0) {
+        hsnRows.push({ hsn: "7113", taxable: totalTaxable, tax: totalTax, rate: 3 });
       }
 
-      y += 16;
+      hsnRows.slice(0, 2).forEach((hr) => {
+        y += 13;
+        doc.fontSize(6.5).font("Helvetica").fillColor("#000000");
+        doc.text(`HSN: ${hr.hsn}`, margin + 6, y + 2);
+        doc.text(`Taxable: Rs. ${formatINR(hr.taxable)}`, margin + 65, y + 2);
+        if (isInterState) {
+          doc.text(`IGST (${hr.rate}%): Rs. ${formatINR(hr.tax)}`, margin + 175, y + 2);
+        } else {
+          const halfRate = (hr.rate / 2).toFixed(1);
+          const halfTax = hr.tax / 2;
+          doc.text(`CGST (${halfRate}%): Rs. ${formatINR(halfTax)}`, margin + 155, y + 2);
+          doc.text(`SGST (${halfRate}%): Rs. ${formatINR(halfTax)}`, margin + 245, y + 2);
+        }
+      });
+
+      y += 15;
       doc.moveTo(margin, y).lineTo(margin + leftColWidth, y).lineWidth(0.5).strokeColor("#CBD5E1").stroke();
 
       // Amount in Words

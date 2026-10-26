@@ -126,7 +126,7 @@ export const getGstr1 = async (req: Request, res: Response) => {
     prisma.invoice.findMany({
       where: {
         companyId,
-        status: { in: ["POSTED", "APPROVED", "PAID"] },
+        status: { in: ["OPEN", "PARTIAL", "PAID", "POSTED", "APPROVED"] },
         date: { gte: from, lt: to },
       },
       include: { customer: true, lines: true },
@@ -358,12 +358,12 @@ export const getGstr3b = async (req: Request, res: Response) => {
 
   const [outward, inward, notes] = await Promise.all([
     prisma.invoice.aggregate({
-      where: { companyId, status: { in: ["POSTED", "APPROVED", "PAID"] }, date: { gte: from, lt: to } },
+      where: { companyId, status: { in: ["OPEN", "PARTIAL", "PAID", "POSTED", "APPROVED"] }, date: { gte: from, lt: to } },
       _sum: { taxableAmount: true, cgst: true, sgst: true, igst: true, grandTotal: true },
       _count: { id: true },
     }),
     prisma.bill.aggregate({
-      where: { companyId, status: { in: ["POSTED", "APPROVED", "PAID"] }, date: { gte: from, lt: to } },
+      where: { companyId, status: { in: ["OPEN", "PARTIAL", "PAID", "POSTED", "APPROVED"] }, date: { gte: from, lt: to } },
       _sum: { taxableAmount: true, cgst: true, sgst: true, igst: true, grandTotal: true },
       _count: { id: true },
     }),
@@ -483,7 +483,7 @@ export const exportGstReturn = async (req: Request, res: Response) => {
   if (returnType === "gstr1" && format === "json") {
     // Generate official GST Portal Offline Tool JSON schema
     const invoices = await prisma.invoice.findMany({
-      where: { companyId, status: { in: ["POSTED", "APPROVED", "PAID"] }, date: { gte: from, lt: to } },
+      where: { companyId, status: { in: ["OPEN", "PARTIAL", "PAID", "POSTED", "APPROVED"] }, date: { gte: from, lt: to } },
       include: { customer: true, lines: true },
       orderBy: { date: "asc" },
     });

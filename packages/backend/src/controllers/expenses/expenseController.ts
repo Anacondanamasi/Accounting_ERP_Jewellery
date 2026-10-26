@@ -3,7 +3,8 @@ import { z } from "zod";
 import { created, fail, ok } from "../../lib/apiResponse";
 import { prisma } from "../../lib/prisma";
 import { getCompanyId, getActor } from "../../lib/requestUtils";
-import { upsertPostedJournalForSource } from "../../lib/accounting";
+import { upsertPostedJournalForSource, resolveAccountingAccounts } from "../../lib/accounting";
+import { evaluatePlaceOfSupply, computeDocumentTax, generateGstJournalPosting } from "../../lib/gst";
 
 const directExpenseSchema = z.object({
   date: z.coerce.date(),

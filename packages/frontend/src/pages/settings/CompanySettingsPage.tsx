@@ -9,6 +9,7 @@ import { settingsService, type CompanySettings, type NumberSeries } from "@/serv
 import { SettingsCenterPanel } from "./SettingsCenterPanel";
 import { FinancialYearSettingsTab } from "./FinancialYearSettingsTab";
 import { AdvanceConfigTab } from "./AdvanceConfigTab";
+import { GstSettingsTab } from "./GstSettingsTab";
 import { useAuthStore } from "@/stores/authStore";
 
 const companySchema = z.object({
@@ -36,7 +37,7 @@ type CompanyInput = z.infer<typeof companySchema>;
 export const CompanySettingsPage = () => {
   const updateCompany = useAuthStore((state) => state.updateCompany);
   const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
-  const [activeTab, setActiveTab] = useState<"profile" | "financial-years" | "advance-config" | "advanced">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "financial-years" | "advance-config" | "gst-tax" | "advanced">("profile");
 
   const form = useForm<CompanyInput>({
     resolver: zodResolver(companySchema),
@@ -154,6 +155,13 @@ export const CompanySettingsPage = () => {
           Advance Config & PIN Lock
         </button>
         <button
+          className={`pb-2 text-sm font-semibold transition-colors ${activeTab === "gst-tax" ? "border-b-2 border-gold text-charcoal" : "text-muted hover:text-charcoal"}`}
+          onClick={() => setActiveTab("gst-tax")}
+          type="button"
+        >
+          GST & Tax Setup
+        </button>
+        <button
           className={`pb-2 text-sm font-semibold transition-colors ${activeTab === "advanced" ? "border-b-2 border-gold text-charcoal" : "text-muted hover:text-charcoal"}`}
           onClick={() => setActiveTab("advanced")}
           type="button"
@@ -234,6 +242,12 @@ export const CompanySettingsPage = () => {
       {activeTab === "advance-config" && (
         <div className="animate-in fade-in duration-300">
           <AdvanceConfigTab />
+        </div>
+      )}
+
+      {activeTab === "gst-tax" && (
+        <div className="animate-in fade-in duration-300">
+          <GstSettingsTab />
         </div>
       )}
 
