@@ -6,7 +6,10 @@ const reportLinks = [
   { title: "Trial Balance", path: "/trial-balance", description: "Ledger balances before period closing." },
   { title: "Balance Sheet", path: "/balance-sheet", description: "Assets, liabilities and capital position." },
   { title: "Cash Flow", path: "/cash-flow", description: "Operating, investing and financing cash movement." },
+  { title: "Receivables Ageing", path: "/ageing/receivables", description: "Customer-wise overdue balance analysis and aging buckets." },
+  { title: "Payables Ageing", path: "/ageing/payables", description: "Supplier-wise pending payments and aging breakdown." },
   { title: "Day Book", path: "/day-book", description: "Voucher-wise daily transaction register." },
+  { title: "Transaction Journal Report", path: "/reports/journal", description: "Comprehensive audit journal listing all ledger debits and credits." },
   { title: "GST Returns", path: "/tax/gst", description: "Return status and tax summary statements." },
 ];
 
@@ -27,11 +30,15 @@ export const ReportCentrePage = () => {
           </thead>
           <tbody>
             {reportLinks.map((report) => (
-              <tr key={report.path} className="border-b border-border/60">
+              <tr key={report.path} className="border-b border-border/60 hover:bg-slate-50 transition-colors">
                 <td className="px-3 py-2 font-medium">{report.title}</td>
                 <td className="px-3 py-2 text-muted">{report.description}</td>
                 <td className="px-3 py-2">
-                  <button className="rounded border border-border px-3 py-1 text-xs" onClick={() => navigate(report.path)} type="button">
+                  <button
+                    className="rounded border border-border px-3 py-1 text-xs hover:bg-gold-tint hover:border-gold/40 transition-colors"
+                    onClick={() => navigate(report.path)}
+                    type="button"
+                  >
                     Open
                   </button>
                 </td>
