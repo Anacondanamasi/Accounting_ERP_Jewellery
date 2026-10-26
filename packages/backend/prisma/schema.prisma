@@ -269,6 +269,10 @@ model JournalEntry {
   updatedAt   DateTime       @updatedAt
   createdBy   String
   lines       JournalLine[]
+
+  @@index([companyId, date, id])
+  @@index([companyId, status, date])
+  @@index([companyId, type])
 }
 
 model JournalLine {
@@ -286,6 +290,10 @@ model JournalLine {
   updatedAt    DateTime @updatedAt
   createdBy    String
   entry        JournalEntry @relation(fields: [entryId], references: [id])
+
+  @@index([companyId, accountId, createdAt])
+  @@index([companyId, entryId])
+  @@index([companyId, costCentreId])
 }
 
 model JournalTemplate {
@@ -1610,4 +1618,56 @@ model AssetPhysicalVerification {
 
   @@index([fixedAssetId])
   @@index([companyId, verificationDate])
+}
+
+
+model CustomReport {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  reportId    String
+  name        String
+  description String?
+  folderId    Int?
+  visibility  String   @default("PRIVATE")
+  isDefault   Boolean  @default(false)
+  definition  String
+  version     Int      @default(1)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  folder      ReportFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  schedules   ReportSchedule[]
+
+  @@unique([companyId, name])
+  @@index([companyId, reportId])
+}
+
+model ReportFolder {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  createdBy String
+  createdAt DateTime @default(now())
+  reports   CustomReport[]
+
+  @@unique([companyId, name])
+}
+
+model ReportSchedule {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  customReportId Int
+  frequency      String
+  cronExpression String?
+  recipients     String
+  format         String    @default("PDF")
+  isActive       Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdBy      String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  customReport   CustomReport @relation(fields: [customReportId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, isActive])
 }
