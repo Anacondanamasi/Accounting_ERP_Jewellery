@@ -1,15 +1,12 @@
-import { ChevronDown, ChevronRight, ChevronUp, LogOut, Plus, Building2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { NAV_ITEMS } from "@/lib/nav";
 import { usePermissionChecks } from "@/lib/permissions";
-import { useAppStore } from "@/stores/appStore";
 import { useAuthStore } from "@/stores/authStore";
-
 
 export const Sidebar = () => {
   const location = useLocation();
-  const { currentFinancialYear } = useAppStore();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() =>
     NAV_ITEMS.reduce<Record<string, boolean>>((acc, group) => {
       acc[group.group] = true;
@@ -17,7 +14,6 @@ export const Sidebar = () => {
     }, {}),
   );
 
-  const user = useAuthStore((state) => state.user);
   const companies = useAuthStore((state) => state.companies);
   const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
 
@@ -28,26 +24,6 @@ export const Sidebar = () => {
 
   const activePath = location.pathname;
   const { hasPathPermission } = usePermissionChecks();
-
-  const fullName = user?.fullName || "System User";
-  const initials = useMemo(
-    () =>
-      fullName
-        .split(" ")
-        .map((part) => part[0]?.toUpperCase())
-        .slice(0, 2)
-        .join(""),
-    [fullName],
-  );
-
-
-  const navigate = useNavigate();
-  const logout = useAuthStore((state) => state.logout);
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
 
   return (
     <aside className="watermark-diagonal fixed left-0 top-0 z-30 h-screen w-sidebar overflow-y-auto bg-charcoal text-white flex flex-col print:hidden">
@@ -60,7 +36,11 @@ export const Sidebar = () => {
             <div className="font-display text-base font-semibold">HKS Accounting</div>
             <div className="flex items-center justify-between text-[11px] text-muted">
               <span className="truncate">{currentCompany?.name || "Company Name"}</span>
-              <Link to="/onboarding/create-company" title="Create Organisation" className="ml-1 p-0.5 rounded hover:bg-white/10 text-gold hover:text-white transition-colors">
+              <Link
+                to="/onboarding/create-company"
+                title="Create Organisation"
+                className="ml-1 p-0.5 rounded hover:bg-white/10 text-gold hover:text-white transition-colors"
+              >
                 <Plus className="h-3.5 w-3.5" />
               </Link>
             </div>
@@ -68,8 +48,7 @@ export const Sidebar = () => {
         </div>
       </div>
 
-
-      <nav className="space-y-2 py-3">
+      <nav className="space-y-2 py-3 pb-8">
         {NAV_ITEMS.map((group) => {
           const isCollapsed = collapsedGroups[group.group] ?? false;
           return (
@@ -118,29 +97,6 @@ export const Sidebar = () => {
           );
         })}
       </nav>
-
-      <div className="mt-auto border-t border-white/10 p-3 bg-charcoal/90">
-        <div className="flex items-center justify-between rounded-lg p-2 hover:bg-white/5 transition-colors">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gold text-xs font-semibold text-white">
-              {initials}
-            </div>
-            <div className="min-w-0">
-              <div className="truncate text-xs font-medium text-white">{fullName}</div>
-              <div className="text-[11px] text-muted">{currentCompany?.role ?? "Viewer"}</div>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            title="Log out"
-            type="button"
-            className="flex items-center gap-1.5 rounded border border-ruby/30 bg-ruby/10 px-2 py-1 text-xs text-ruby hover:bg-ruby hover:text-white transition-all ml-2 shrink-0 cursor-pointer"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </div>
     </aside>
   );
 };
