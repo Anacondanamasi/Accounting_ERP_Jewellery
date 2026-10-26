@@ -21,9 +21,17 @@ import {
   getPpeScheduleReport,
   getTaxBlockReport,
   getBooksVsTaxComparison,
+  getDynamicRegister,
+  seedSampleAssets,
 } from "../controllers/fixedAssets/fixedAssetController";
 
 const router = Router();
+
+// Sample Data Seeding
+router.post("/seed-samples", seedSampleAssets);
+
+// Dynamic Auto-Generated Fixed Asset Register
+router.get("/register", getDynamicRegister);
 
 // Summary & KPI
 router.get("/summary/kpis", getSummaryKpis);

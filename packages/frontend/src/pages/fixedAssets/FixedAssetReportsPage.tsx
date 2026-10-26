@@ -63,6 +63,12 @@ export const FixedAssetReportsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-3">
+          <Link
+            to="/assets"
+            className="px-4 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg shadow-sm hover:bg-indigo-100 transition flex items-center gap-1.5"
+          >
+            <span>📊 Dynamic Asset Register</span>
+          </Link>
           <button
             onClick={handlePrint}
             className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg shadow-sm hover:bg-slate-50 transition"

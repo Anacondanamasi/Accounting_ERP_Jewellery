@@ -250,3 +250,315 @@ export async function ensureFixedAssetSeedData(companyId: number, actor = "syste
     }
   }
 }
+
+export interface SampleAssetDef {
+  assetCode: string;
+  name: string;
+  categoryCode: string;
+  dateOfPurchase: string;
+  datePutToUse: string;
+  originalCost: number;
+  usefulLifeYears: number;
+  depreciationMethod: "SLM" | "WDV";
+  salvagePercentage: number;
+  location: string;
+  department: string;
+  custodian: string;
+  serialNo: string;
+  vendorName: string;
+  billInvoiceNo: string;
+  status: "ACTIVE" | "CWIP" | "DISPOSED";
+  isCwip?: boolean;
+  isDisposed?: boolean;
+  disposalDate?: string;
+  disposalAmount?: number;
+  disposalReason?: string;
+  description: string;
+}
+
+export const SAMPLE_JEWELLERY_ASSETS: SampleAssetDef[] = [
+  {
+    assetCode: "PLM-2024-0001",
+    name: "Fiber Laser Hallmarking & Marking Machine",
+    categoryCode: "PLM",
+    dateOfPurchase: "2024-05-10",
+    datePutToUse: "2024-05-15",
+    originalCost: 650000,
+    usefulLifeYears: 15,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Manufacturing Workshop - Floor 1",
+    department: "Production & Karigar",
+    custodian: "Ramesh Sharma (Head Karigar)",
+    serialNo: "FIBER-LSR-8821",
+    vendorName: "Mehta Laser Tech Pvt Ltd",
+    billInvoiceNo: "MLT/2024/049",
+    status: "ACTIVE",
+    description: "20W Fiber laser system for BIS hallmark engraving and barcode marking on gold and platinum jewelry.",
+  },
+  {
+    assetCode: "PLM-2024-0002",
+    name: "Gold Purity Testing XRF Spectrometer (EDXRF)",
+    categoryCode: "PLM",
+    dateOfPurchase: "2024-07-08",
+    datePutToUse: "2024-07-12",
+    originalCost: 480000,
+    usefulLifeYears: 10,
+    depreciationMethod: "WDV",
+    salvagePercentage: 5,
+    location: "Purity Testing Lab",
+    department: "Quality & Hallmarking",
+    custodian: "Dr. Ananya Shah (Chief Assayer)",
+    serialNo: "XRF-GOLD-PRO-90",
+    vendorName: "Thermo Analytical India",
+    billInvoiceNo: "TAI/INV/8812",
+    status: "ACTIVE",
+    description: "High-precision benchtop XRF analyzer for non-destructive gold, silver and bullion karat analysis.",
+  },
+  {
+    assetCode: "FUR-2024-0001",
+    name: "Showroom Fire & Burglary Vault Door & Cash Safes",
+    categoryCode: "FUR",
+    dateOfPurchase: "2024-04-01",
+    datePutToUse: "2024-04-05",
+    originalCost: 350000,
+    usefulLifeYears: 10,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Main Showroom Strong Room",
+    department: "Security & Vaulting",
+    custodian: "Vikram Mehta (Store General Manager)",
+    serialNo: "GD-SEC-VAULT-77",
+    vendorName: "Godrej Security Solutions",
+    billInvoiceNo: "GSS/MH/10293",
+    status: "ACTIVE",
+    description: "Class C heavy-duty burglary and torch-resistant vault door with dual combination keylocks.",
+  },
+  {
+    assetCode: "VEH-2024-0001",
+    name: "Armored Bullion & Cash Escort Van",
+    categoryCode: "VEH",
+    dateOfPurchase: "2024-11-15",
+    datePutToUse: "2024-11-20",
+    originalCost: 1280000,
+    usefulLifeYears: 8,
+    depreciationMethod: "WDV",
+    salvagePercentage: 5,
+    location: "Showroom Main Parking",
+    department: "Logistics & Bullion Transit",
+    custodian: "Sunil Patil (Fleet Officer)",
+    serialNo: "MH-01-EF-8820",
+    vendorName: "Mahindra Commercial Vehicles",
+    billInvoiceNo: "MHM/24/7781",
+    status: "ACTIVE",
+    description: "Custom reinforced cash and gold transport van with GPS tracking, panic sirens and vault compartments.",
+  },
+  {
+    assetCode: "OFF-2024-0001",
+    name: "Central 32-Channel IP CCTV Surveillance & NVR",
+    categoryCode: "OFF",
+    dateOfPurchase: "2024-06-15",
+    datePutToUse: "2024-06-20",
+    originalCost: 210000,
+    usefulLifeYears: 5,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Showroom Floors 1 & 2",
+    department: "Security",
+    custodian: "Security Supervisor",
+    serialNo: "CP-NVR-32CH-99",
+    vendorName: "CP Plus Security Hub",
+    billInvoiceNo: "CPS/2024/902",
+    status: "ACTIVE",
+    description: "32-channel 4K IP security camera system with 90-day redundant cloud and on-premise storage.",
+  },
+  {
+    assetCode: "OFF-2025-0001",
+    name: "Daikin Inverter Central VRV Air Conditioning System",
+    categoryCode: "OFF",
+    dateOfPurchase: "2025-04-10",
+    datePutToUse: "2025-04-15",
+    originalCost: 275000,
+    usefulLifeYears: 5,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Bridal Jewellery Lounge",
+    department: "Retail Showroom",
+    custodian: "Pooja Vora (Lounge Manager)",
+    serialNo: "DAIKIN-VRV-2025-01",
+    vendorName: "CoolAir Technologies",
+    billInvoiceNo: "CAT/25/112",
+    status: "ACTIVE",
+    description: "Variable refrigerant volume 4-way cassette AC unit providing climate control for showroom.",
+  },
+  {
+    assetCode: "SRV-2025-0001",
+    name: "Dell PowerEdge ERP Database Server & Rack",
+    categoryCode: "SRV",
+    dateOfPurchase: "2025-06-01",
+    datePutToUse: "2025-06-05",
+    originalCost: 320000,
+    usefulLifeYears: 6,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Server Room (Restricted Access)",
+    department: "Information Technology",
+    custodian: "IT Systems Admin",
+    serialNo: "DELL-R750-SRV-01",
+    vendorName: "CompuCom Systems India",
+    billInvoiceNo: "CCS/2025/334",
+    status: "ACTIVE",
+    description: "High-reliability dual Xeon server running on-premise jewellery ERP database and automated backups.",
+  },
+  {
+    assetCode: "CMP-2025-0001",
+    name: "POS Touch Billing Terminals & RFID Jewelry Trays",
+    categoryCode: "CMP",
+    dateOfPurchase: "2025-09-10",
+    datePutToUse: "2025-09-15",
+    originalCost: 195000,
+    usefulLifeYears: 3,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Retail Billing Counters 1, 2, 3",
+    department: "Sales & Billing",
+    custodian: "Head Cashier",
+    serialNo: "POS-RFID-TR-01-03",
+    vendorName: "JewelTech POS Solutions",
+    billInvoiceNo: "JT/25/098",
+    status: "ACTIVE",
+    description: "3 complete POS touchscreen terminals paired with UHF RFID scanning mats for instant tray tallying.",
+  },
+  {
+    assetCode: "FUR-2026-0001",
+    name: "New Heritage Bridal Lounge Expansion (CWIP)",
+    categoryCode: "FUR",
+    dateOfPurchase: "2026-01-10",
+    datePutToUse: "2026-01-10",
+    originalCost: 580000,
+    usefulLifeYears: 10,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Ground Floor Annex",
+    department: "Expansion & Projects",
+    custodian: "Project Architect",
+    serialNo: "CWIP-ANNEX-2026",
+    vendorName: "DesignCraft Interiors",
+    billInvoiceNo: "DCI/2026/004",
+    status: "CWIP",
+    isCwip: true,
+    description: "Capital Work-in-Progress for custom teakwood display vitrines and chandeliers awaiting completion.",
+  },
+  {
+    assetCode: "VEH-2023-0001",
+    name: "Honda Activa 125 Delivery Scooter (Disposed)",
+    categoryCode: "VEH",
+    dateOfPurchase: "2023-05-10",
+    datePutToUse: "2023-05-15",
+    originalCost: 75000,
+    usefulLifeYears: 8,
+    depreciationMethod: "SLM",
+    salvagePercentage: 5,
+    location: "Main Branch",
+    department: "Local Messenger",
+    custodian: "Kishore Kumar",
+    serialNo: "MH-01-CJ-4491",
+    vendorName: "Automotive World",
+    billInvoiceNo: "AW/2023/110",
+    status: "DISPOSED",
+    isDisposed: true,
+    disposalDate: "2026-01-20",
+    disposalAmount: 32000,
+    disposalReason: "SOLD",
+    description: "Old two-wheeler sold off after acquiring electric vehicle fleet.",
+  },
+];
+
+/**
+ * Seed realistic jewellery fixed assets for sample testing and review
+ */
+export async function seedSampleJewelleryAssets(companyId: number, actor = "system") {
+  // Ensure masters exist first
+  await ensureFixedAssetSeedData(companyId, actor);
+
+  const categories = await prisma.assetCategory.findMany({ where: { companyId } });
+  const categoryByCode = new Map<string, typeof categories[0]>();
+  for (const c of categories) {
+    if (c.code) {
+      categoryByCode.set(c.code, c);
+    }
+  }
+
+  let seededCount = 0;
+
+  for (const item of SAMPLE_JEWELLERY_ASSETS) {
+    const existing = await prisma.fixedAsset.findFirst({
+      where: { companyId, assetCode: item.assetCode },
+    });
+
+    if (!existing) {
+      const category = categoryByCode.get(item.categoryCode) || categories[0];
+      if (!category) continue;
+
+      const ptu = new Date(item.datePutToUse);
+      const pur = new Date(item.dateOfPurchase);
+      const dispDate = item.disposalDate ? new Date(item.disposalDate) : null;
+      const salvageValue = Math.round(((item.originalCost * item.salvagePercentage) / 100) * 100) / 100;
+
+      // Approximate accumulated depreciation up to now
+      const msElapsed = Math.max(0, (dispDate ? dispDate.getTime() : Date.now()) - ptu.getTime());
+      const yearsElapsed = msElapsed / (365.25 * 24 * 3600 * 1000);
+      let initialAccumDep = 0;
+      if (!item.isCwip) {
+        if (item.depreciationMethod === "SLM") {
+          const annual = (item.originalCost - salvageValue) / item.usefulLifeYears;
+          initialAccumDep = Math.min(item.originalCost - salvageValue, annual * yearsElapsed);
+        } else {
+          // WDV
+          const rate = 1 - Math.pow(salvageValue / item.originalCost, 1 / item.usefulLifeYears);
+          const remaining = item.originalCost * Math.pow(1 - rate, yearsElapsed);
+          initialAccumDep = Math.min(item.originalCost - salvageValue, item.originalCost - remaining);
+        }
+      }
+      initialAccumDep = Math.round(initialAccumDep * 100) / 100;
+      const currentBookValue = Math.round((item.originalCost - initialAccumDep) * 100) / 100;
+
+      await prisma.fixedAsset.create({
+        data: {
+          companyId,
+          assetCode: item.assetCode,
+          name: item.name,
+          description: item.description,
+          assetCategoryId: category.id,
+          taxBlockId: category.taxBlockId,
+          serialNo: item.serialNo,
+          location: item.location,
+          department: item.department,
+          custodian: item.custodian,
+          dateOfPurchase: pur,
+          datePutToUse: ptu,
+          originalCost: item.originalCost,
+          salvageValue,
+          usefulLifeYears: item.usefulLifeYears,
+          depreciationMethod: item.depreciationMethod,
+          currentBookValue,
+          accumulatedDep: initialAccumDep,
+          status: item.status,
+          isCwip: Boolean(item.isCwip),
+          isDisposed: Boolean(item.isDisposed),
+          disposalDate: dispDate,
+          disposalAmount: item.disposalAmount ?? null,
+          disposalReason: item.disposalReason ?? null,
+          billInvoiceNo: item.billInvoiceNo,
+          billDate: pur,
+          createdBy: actor,
+        },
+      });
+
+      seededCount++;
+    }
+  }
+
+  return seededCount;
+}
+

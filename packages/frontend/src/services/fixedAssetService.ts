@@ -70,6 +70,94 @@ export interface FixedAssetItem {
   verifications?: any[];
 }
 
+export interface RegisterItemRow {
+  assetId: number;
+  assetCode: string;
+  name: string;
+  categoryName: string;
+  categoryCode: string;
+  taxBlockName?: string;
+  taxBlockRate?: number;
+  location?: string;
+  department?: string;
+  custodian?: string;
+  serialNo?: string;
+  datePutToUse: string;
+  disposalDate?: string;
+  status: string;
+  depreciationMethod: "SLM" | "WDV";
+  usefulLifeYears: number;
+  salvageValue: number;
+  isAdditionInPeriod: boolean;
+  isDisposalInPeriod: boolean;
+  isLessThan180DaysAddition: boolean;
+
+  grossOpening: number;
+  additions: number;
+  deductions: number;
+  grossClosing: number;
+
+  depreciationOpening: number;
+  depreciationForPeriod: number;
+  depreciationOnDeductions: number;
+  depreciationClosing: number;
+
+  netOpening: number;
+  netClosing: number;
+}
+
+export interface RegisterCategoryRow {
+  categoryId: number;
+  categoryName: string;
+  categoryCode: string;
+  usefulLifeYears: number;
+  defaultMethod: string;
+  assetCount: number;
+
+  grossOpening: number;
+  additions: number;
+  deductions: number;
+  grossClosing: number;
+
+  depreciationOpening: number;
+  depreciationForPeriod: number;
+  depreciationOnDeductions: number;
+  depreciationClosing: number;
+
+  netOpening: number;
+  netClosing: number;
+}
+
+export interface DynamicRegisterResponse {
+  metadata: {
+    financialYear: string;
+    periodType: string;
+    periodLabel: string;
+    startDate: string;
+    endDate: string;
+    generatedAt: string;
+    standard: string;
+  };
+  grandTotals: {
+    grossOpening: number;
+    additions: number;
+    deductions: number;
+    grossClosing: number;
+    depreciationOpening: number;
+    depreciationForPeriod: number;
+    depreciationOnDeductions: number;
+    depreciationClosing: number;
+    netOpening: number;
+    netClosing: number;
+    totalAssets: number;
+    activeCount: number;
+    cwipCount: number;
+    disposedCount: number;
+  };
+  categories: RegisterCategoryRow[];
+  itemized: RegisterItemRow[];
+}
+
 export const fixedAssetService = {
   async getKpis() {
     const res = await api.get("/fixed-assets/summary/kpis");
@@ -190,5 +278,28 @@ export const fixedAssetService = {
   async getBooksVsTaxReport() {
     const res = await api.get("/fixed-assets/reports/books-vs-tax");
     return res.data.data;
+  },
+
+  async getDynamicRegister(params: {
+    financialYear?: string;
+    periodType?: "FY" | "H1" | "H2" | "Q1" | "Q2" | "Q3" | "Q4" | "MONTH" | "CUSTOM";
+    month?: number;
+    startDate?: string;
+    endDate?: string;
+    categoryId?: number;
+    taxBlockId?: number;
+    status?: string;
+    depreciationMethod?: string;
+    location?: string;
+    department?: string;
+    search?: string;
+  } = {}) {
+    const res = await api.get("/fixed-assets/register", { params });
+    return res.data.data;
+  },
+
+  async seedSampleAssets() {
+    const res = await api.post("/fixed-assets/seed-samples");
+    return res.data.data as { seededCount: number };
   },
 };

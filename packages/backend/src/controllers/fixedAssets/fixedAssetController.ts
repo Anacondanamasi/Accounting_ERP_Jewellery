@@ -5,6 +5,8 @@ import { FixedAssetService } from "../../services/fixedAssets/fixedAssetService"
 import { DepreciationRunService } from "../../services/fixedAssets/depreciationRunService";
 import { AssetDisposalService } from "../../services/fixedAssets/assetDisposalService";
 import { FixedAssetReportService } from "../../services/fixedAssets/fixedAssetReportService";
+import { FixedAssetRegisterService } from "../../services/fixedAssets/fixedAssetRegisterService";
+import { seedSampleJewelleryAssets } from "../../services/fixedAssets/fixedAssetSeedService";
 import { prisma } from "../../lib/prisma";
 
 export const listAssets = async (req: Request, res: Response) => {
@@ -298,3 +300,40 @@ export const getBooksVsTaxComparison = async (req: Request, res: Response) => {
     return fail(res, 500, "BOOKS_VS_TAX_REPORT_FAILED", err.message);
   }
 };
+
+export const getDynamicRegister = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+
+  try {
+    const report = await FixedAssetRegisterService.generateRegister(companyId, {
+      financialYear: req.query.financialYear ? String(req.query.financialYear) : undefined,
+      periodType: req.query.periodType ? (String(req.query.periodType) as any) : undefined,
+      month: req.query.month ? Number(req.query.month) : undefined,
+      startDate: req.query.startDate ? String(req.query.startDate) : undefined,
+      endDate: req.query.endDate ? String(req.query.endDate) : undefined,
+      categoryId: req.query.categoryId ? Number(req.query.categoryId) : undefined,
+      taxBlockId: req.query.taxBlockId ? Number(req.query.taxBlockId) : undefined,
+      status: req.query.status ? String(req.query.status) : undefined,
+      depreciationMethod: req.query.depreciationMethod ? String(req.query.depreciationMethod) : undefined,
+      location: req.query.location ? String(req.query.location) : undefined,
+      department: req.query.department ? String(req.query.department) : undefined,
+      search: req.query.search ? String(req.query.search) : undefined,
+    });
+    return ok(res, report);
+  } catch (err: any) {
+    return fail(res, 500, "DYNAMIC_REGISTER_FAILED", err.message);
+  }
+};
+
+export const seedSampleAssets = async (req: Request, res: Response) => {
+  const companyId = getCompanyId(req);
+  const actor = getActor(req);
+
+  try {
+    const count = await seedSampleJewelleryAssets(companyId, actor);
+    return ok(res, { seededCount: count }, `Successfully seeded ${count} sample fixed assets`);
+  } catch (err: any) {
+    return fail(res, 500, "SEED_SAMPLE_ASSETS_FAILED", err.message);
+  }
+};
+
