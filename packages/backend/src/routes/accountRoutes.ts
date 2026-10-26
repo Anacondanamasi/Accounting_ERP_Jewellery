@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { ok, created, fail } from "../lib/apiResponse";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { ensureCompanyDefaultAccounts } from "../lib/defaultAccounts";
+import { canonicalAccountType } from "../lib/accounting";
 
 export const accountRoutes = Router();
 accountRoutes.use(authMiddleware);
@@ -78,7 +79,49 @@ accountRoutes.get("/", async (req, res) => {
     include: { accountGroup: true },
     orderBy: [{ group: "asc" }, { code: "asc" }],
   });
-  return ok(res, rows);
+
+  // Calculate current balances and transaction counts from posted journal lines
+  const journalAggs = await prisma.journalLine.groupBy({
+    by: ["accountId"],
+    where: {
+      companyId,
+      entry: { status: "POSTED" },
+    },
+    _sum: {
+      debit: true,
+      credit: true,
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  const aggMap = new Map<number, { debit: number; credit: number; count: number }>();
+  for (const agg of journalAggs) {
+    aggMap.set(agg.accountId, {
+      debit: agg._sum.debit ?? 0,
+      credit: agg._sum.credit ?? 0,
+      count: agg._count._all ?? 0,
+    });
+  }
+
+  const enrichedRows = rows.map((acc) => {
+    const agg = aggMap.get(acc.id) || { debit: 0, credit: 0, count: 0 };
+    const cType = canonicalAccountType(acc.type || acc.accountGroup?.type);
+    const isDebitNature = cType === "asset" || cType === "expense";
+    const netMovement = isDebitNature ? agg.debit - agg.credit : agg.credit - agg.debit;
+    const currentBalance = Number((Number(acc.openingBalance) + netMovement).toFixed(2));
+
+    return {
+      ...acc,
+      currentBalance,
+      totalDebit: Number(agg.debit.toFixed(2)),
+      totalCredit: Number(agg.credit.toFixed(2)),
+      transactionCount: agg.count,
+    };
+  });
+
+  return ok(res, enrichedRows);
 });
 
 accountRoutes.get("/groups", async (req, res) => {
