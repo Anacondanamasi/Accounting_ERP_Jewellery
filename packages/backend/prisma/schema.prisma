@@ -13,6 +13,7 @@ datasource db {
 model Company {
   id Int @id @default(autoincrement())
   name                 String
+  industry             String?
   legalName            String?
   gstin                String?
   pan                  String?
@@ -72,6 +73,8 @@ model User {
   fullName   String
   password   String
   role       String
+  status     String?      @default("ACTIVE")
+  lastActiveOrgId Int?     @map("last_active_org_id")
   isActive   Boolean      @default(true)
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
@@ -241,6 +244,8 @@ model JournalLine {
   credit       Float
   costCentreId Int?
   narration    String?
+  reconciliationId Int?
+  clearedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   createdBy    String
@@ -615,6 +620,9 @@ model BankAccount {
   createdBy      String
   account        Account? @relation(fields: [accountId], references: [id])
   transactions   BankTransaction[]
+  importBatches  BankImportBatch[]
+  feedLines      BankFeedLine[]
+  reconciliations Reconciliation[]
 }
 
 model BankTransaction {
@@ -629,6 +637,7 @@ model BankTransaction {
   balance            Float
   isReconciled       Boolean  @default(false)
   reconciledAt       DateTime?
+  reconciliationId   Int?
   matchedJournalLineId Int?
   importBatchId      Int?
   source             String   @default("BANK_STATEMENT")
@@ -656,6 +665,155 @@ model BankReconciliation {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   createdBy            String
+}
+
+
+model BankImportBatch {
+  id              Int            @id @default(autoincrement())
+  companyId       Int
+  bankAccountId   Int
+  fileName        String
+  fileChecksum    String
+  templateVersion String         @default("v1")
+  totalRows       Int            @default(0)
+  importedRows    Int            @default(0)
+  duplicateRows   Int            @default(0)
+  errorRows       Int            @default(0)
+  openingBalance  Float?
+  closingBalance  Float?
+  status          String         @default("COMPLETED") // "COMPLETED" | "UNDONE"
+  errorReportJson String?
+  importedBy      String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  bankAccount     BankAccount    @relation(fields: [bankAccountId], references: [id])
+  feedLines       BankFeedLine[]
+
+  @@index([companyId, bankAccountId])
+}
+
+model BankFeedLine {
+  id                    Int                 @id @default(autoincrement())
+  companyId             Int
+  bankAccountId         Int
+  batchId               Int?
+  txnDate               DateTime
+  valueDate             DateTime?
+  descriptionRaw        String
+  descriptionNormalized String
+  reference             String?
+  payeeHint             String?
+  debit                 Float               @default(0)
+  credit                Float               @default(0)
+  amount                Float               @default(0)
+  runningBalance        Float?
+  currency              String              @default("INR")
+  dedupeHash            String
+  status                String              @default("FOR_REVIEW") // "FOR_REVIEW" | "CATEGORIZED" | "MATCHED" | "TRANSFER" | "EXCLUDED"
+  excludeReason         String?
+  source                String              @default("TEMPLATE_IMPORT") // "TEMPLATE_IMPORT" | "MANUAL" | "API"
+  ruleId                Int?
+  suggestedType         String?
+  suggestedPayeeId      Int?
+  suggestedAccountId    Int?
+  suggestedTaxRate      Float?
+  suggestedConfidence   Float?
+  linkedTransactionId   Int?
+  linkedTransactionType String?             // "JOURNAL" | "INVOICE_PAYMENT" | "BILL_PAYMENT" | "TRANSFER" | "EXPENSE"
+  reviewedBy            String?
+  reviewedAt            DateTime?
+  rawRowJson            String?
+  notes                 String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  bankAccount           BankAccount         @relation(fields: [bankAccountId], references: [id])
+  batch                 BankImportBatch?    @relation(fields: [batchId], references: [id])
+  matches               BankFeedLineMatch[]
+
+  @@unique([companyId, bankAccountId, dedupeHash])
+  @@index([companyId, bankAccountId, status, txnDate])
+}
+
+model BankFeedLineMatch {
+  id              Int          @id @default(autoincrement())
+  companyId       Int
+  feedLineId      Int
+  documentType    String       // "INVOICE" | "BILL" | "PAYMENT" | "JOURNAL" | "EXPENSE"
+  documentId      Int
+  allocatedAmount Float
+  confidenceScore Float        @default(100)
+  createdAt       DateTime     @default(now())
+  feedLine        BankFeedLine @relation(fields: [feedLineId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, feedLineId])
+  @@index([companyId, documentType, documentId])
+}
+
+model BankRule {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  name             String
+  priority         Int      @default(0)
+  applyToDirection String   @default("BOTH") // "MONEY_IN" | "MONEY_OUT" | "BOTH"
+  bankAccountId    Int?     // null = all accounts
+  actionType       String   @default("CATEGORIZE") // "CATEGORIZE" | "TRANSFER"
+  targetType       String?  // "EXPENSE" | "DEPOSIT" | "TRANSFER" | "PAYMENT"
+  targetPayee      String?
+  targetAccountId  Int?
+  targetTaxRate    Float?
+  targetMemo       String?
+  autoAdd          Boolean  @default(false)
+  isEnabled        Boolean  @default(true)
+  usageCount       Int      @default(0)
+  conditionsJson   String   // JSON array of { field, operator, value }
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([companyId, isEnabled, priority])
+}
+
+model Reconciliation {
+  id                      Int                  @id @default(autoincrement())
+  companyId               Int
+  bankAccountId           Int
+  statementDate           DateTime
+  beginningBalance        Float
+  endingBalance           Float
+  clearedBalance          Float
+  difference              Float                @default(0)
+  clearedDepositsCount    Int                  @default(0)
+  clearedDepositsAmount   Float                @default(0)
+  clearedPaymentsCount    Int                  @default(0)
+  clearedPaymentsAmount   Float                @default(0)
+  autoAdjustmentAmount    Float                @default(0)
+  autoAdjustmentJournalId Int?
+  status                  String               @default("IN_PROGRESS") // "IN_PROGRESS" | "RECONCILED" | "UNDONE"
+  reconciledBy            String?
+  reconciledAt            DateTime?
+  statementAttachmentUrl  String?
+  reportPdfUrl            String?
+  notes                   String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  bankAccount             BankAccount          @relation(fields: [bankAccountId], references: [id])
+  items                   ReconciliationItem[]
+
+  @@index([companyId, bankAccountId, statementDate])
+}
+
+model ReconciliationItem {
+  id               Int            @id @default(autoincrement())
+  companyId        Int
+  reconciliationId Int
+  transactionType  String         // "JOURNAL_LINE" | "BANK_TXN" | "FEED_LINE"
+  transactionId    Int
+  amount           Float
+  direction        String         // "DEPOSIT" | "PAYMENT"
+  clearedAt        DateTime       @default(now())
+  reconciliation   Reconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, reconciliationId])
+  @@index([companyId, transactionType, transactionId])
 }
 
 model HSNMaster {
@@ -806,6 +964,8 @@ model TenantUser {
   phone               String?
   avatarUrl           String?                     @map("avatar_url")
   isEmailVerified     Boolean                     @default(false) @map("is_email_verified")
+  status              String?                     @default("ACTIVE") @map("status")
+  lastActiveOrgId     String?                     @map("last_active_org_id")
   isActive            Boolean                     @default(true) @map("is_active")
   lastLoginAt         DateTime?                   @map("last_login_at")
   mfaSecret           String?                     @map("mfa_secret")

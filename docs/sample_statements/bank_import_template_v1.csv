@@ -1,0 +1,8 @@
+Date,Description,Reference,Withdrawal (Debit),Deposit (Credit),Balance
+01/04/2025,Customer NEFT Payment - Kundan Jewellers,INV-101,,250000.00,1250000.00
+05/04/2025,Supplier RTGS Gold Purchase - Surat Bullion,PO-8821,450000.00,,800000.00
+10/04/2025,Showroom Retail POS Card Collection,BATCH-991,,12500.00,812500.00
+15/04/2025,Contra Transfer to Petty Cash Vault,CASH-TRF,25000.00,,787500.00
+20/04/2025,GST 3B Challan Payment - April 2025,CHL-9921,36000.00,,751500.00
+30/04/2025,Bank Service Charges + 18% GST,CHRG-9901,590.00,,750910.00
+30/04/2025,Savings Account Monthly Interest Credit,INT-2025,,3450.00,754360.00
