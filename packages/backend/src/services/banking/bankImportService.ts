@@ -125,6 +125,8 @@ export class BankImportService implements BankFeedSource {
     }
 
     // Process transactions & persist batch in database
+    const allRules = await BankRulesEngine.getCompanyRules(companyId);
+
     const result = await prisma.$transaction(async (tx) => {
       const batch = await tx.bankImportBatch.create({
         data: {
@@ -175,13 +177,17 @@ export class BankImportService implements BankFeedSource {
         }
 
         // Apply rules engine
-        const ruleMatch = await BankRulesEngine.evaluateRules(
-          companyId,
+        const lineCtx = {
           bankAccountId,
-          row.description,
-          row.amount,
-          row.reference
-        );
+          txnDate: row.date,
+          descriptionRaw: row.description,
+          descriptionNormalized: row.description.toLowerCase().trim(),
+          amount: row.amount,
+          reference: row.reference,
+          payeeHint: row.payeeHint,
+        };
+
+        const ruleMatch = await BankRulesEngine.evaluateLine(companyId, lineCtx, allRules);
 
         // Feed line lifecycle status
         let status = "FOR_REVIEW";
@@ -199,7 +205,7 @@ export class BankImportService implements BankFeedSource {
             descriptionRaw: row.description,
             descriptionNormalized: row.description.toLowerCase().trim(),
             reference: row.reference,
-            payeeHint: row.payeeHint || ruleMatch?.targetPayee,
+            payeeHint: row.payeeHint || ruleMatch.targetPayeeName,
             debit: row.debit,
             credit: row.credit,
             amount: row.amount,
@@ -208,18 +214,40 @@ export class BankImportService implements BankFeedSource {
             dedupeHash: hash,
             status,
             source: "TEMPLATE_IMPORT",
-            ruleId: ruleMatch?.ruleId || undefined,
-            suggestedType: ruleMatch?.targetType || (row.amount > 0 ? "DEPOSIT" : "EXPENSE"),
-            suggestedPayeeId: undefined,
-            suggestedAccountId: ruleMatch?.targetAccountId || undefined,
-            suggestedTaxRate: ruleMatch?.targetTaxRate !== undefined ? ruleMatch.targetTaxRate : row.taxRateHint,
-            suggestedConfidence: ruleMatch ? 90 : 50,
+            ruleId: ruleMatch.ruleId || undefined,
+            ruleVersion: ruleMatch.ruleVersion || undefined,
+            ruleMode: ruleMatch.ruleId ? (ruleMatch.canAutoAdd ? "AUTO_ADDED" : "SUGGESTED") : undefined,
+            suggestedType: ruleMatch.transactionType || (row.amount > 0 ? "DEPOSIT" : "EXPENSE"),
+            suggestedPayeeId: ruleMatch.targetPayeeId || undefined,
+            suggestedAccountId: ruleMatch.targetAccountId || ruleMatch.splits[0]?.accountId || undefined,
+            suggestedTaxRate: ruleMatch.targetTaxRate !== undefined ? ruleMatch.targetTaxRate : row.taxRateHint,
+            suggestedConfidence: ruleMatch.ruleId ? 95 : 50,
             linkedTransactionId,
             linkedTransactionType,
             rawRowJson: JSON.stringify(row.raw),
-            notes: row.memo || ruleMatch?.targetMemo,
+            notes: row.memo || ruleMatch.targetMemo,
           },
         });
+
+        if (ruleMatch.ruleId) {
+          await tx.bankRule.update({
+            where: { id: ruleMatch.ruleId },
+            data: {
+              usageCount: { increment: 1 },
+              lastUsedAt: new Date(),
+            },
+          });
+
+          await tx.bankRuleApplication.create({
+            data: {
+              companyId,
+              ruleId: ruleMatch.ruleId,
+              ruleVersion: ruleMatch.ruleVersion || 1,
+              feedLineId: feedLine.id,
+              mode: ruleMatch.canAutoAdd ? "AUTO_ADDED" : "SUGGESTED",
+            },
+          });
+        }
 
         // Compute candidate matches in background/on-demand
         importedCount += 1;

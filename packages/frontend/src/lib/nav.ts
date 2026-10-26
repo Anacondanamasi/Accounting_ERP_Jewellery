@@ -39,6 +39,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Sliders,
+  Sparkles,
   Star,
   Tag,
   TrendingUp,
@@ -113,6 +114,7 @@ export const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Bank Accounts", path: "/banking", icon: Landmark },
       { label: "Transactions", path: "/banking/transactions", icon: ArrowUpDown },
+      { label: "Bank Rules", path: "/banking/rules", icon: Sparkles },
       { label: "Spend Money", path: "/banking/spend", icon: ArrowUpCircle },
       { label: "Receive Money", path: "/banking/receive", icon: ArrowDownCircle },
       { label: "Transfer Money", path: "/banking/transfer", icon: ArrowLeftRight },

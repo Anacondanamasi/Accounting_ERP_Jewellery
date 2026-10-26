@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 const tabs = [
   { key: "overview", label: "Overview", path: "/banking" },
   { key: "transactions", label: "Transactions", path: "/banking/transactions" },
+  { key: "rules", label: "Bank Rules", path: "/banking/rules" },
   { key: "import", label: "Bank Statements", path: "/banking/import" },
   { key: "reconcile", label: "Reconciliation", path: "/banking/reconcile" },
   { key: "cheques", label: "Cheques", path: "/banking/cheques" },

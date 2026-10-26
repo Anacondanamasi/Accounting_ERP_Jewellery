@@ -749,6 +749,8 @@ model BankFeedLine {
   excludeReason         String?
   source                String              @default("TEMPLATE_IMPORT") // "TEMPLATE_IMPORT" | "MANUAL" | "API"
   ruleId                Int?
+  ruleVersion           Int?
+  ruleMode              String?             // "SUGGESTED" | "AUTO_ADDED"
   suggestedType         String?
   suggestedPayeeId      Int?
   suggestedAccountId    Int?
@@ -765,6 +767,7 @@ model BankFeedLine {
   bankAccount           BankAccount         @relation(fields: [bankAccountId], references: [id])
   batch                 BankImportBatch?    @relation(fields: [batchId], references: [id])
   matches               BankFeedLineMatch[]
+  ruleApplications      BankRuleApplication[]
 
   @@unique([companyId, bankAccountId, dedupeHash])
   @@index([companyId, bankAccountId, status, txnDate])
@@ -786,26 +789,98 @@ model BankFeedLineMatch {
 }
 
 model BankRule {
-  id               Int      @id @default(autoincrement())
-  companyId        Int
-  name             String
-  priority         Int      @default(0)
-  applyToDirection String   @default("BOTH") // "MONEY_IN" | "MONEY_OUT" | "BOTH"
-  bankAccountId    Int?     // null = all accounts
-  actionType       String   @default("CATEGORIZE") // "CATEGORIZE" | "TRANSFER"
-  targetType       String?  // "EXPENSE" | "DEPOSIT" | "TRANSFER" | "PAYMENT"
-  targetPayee      String?
-  targetAccountId  Int?
-  targetTaxRate    Float?
-  targetMemo       String?
-  autoAdd          Boolean  @default(false)
-  isEnabled        Boolean  @default(true)
-  usageCount       Int      @default(0)
-  conditionsJson   String   // JSON array of { field, operator, value }
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                   Int                    @id @default(autoincrement())
+  companyId            Int
+  name                 String
+  groupId              Int?                   // Optional folder/group e.g. "Bank Charges", "Utilities"
+  priority             Int                    @default(0) // Unique order per company (lower = evaluated first)
+  applyToDirection     String                 @default("MONEY_OUT") // MONEY_IN | MONEY_OUT | BOTH
+  matchMode            String                 @default("ALL") // ALL | ANY
+  scopeAccountType     String                 @default("ALL") // ALL | SPECIFIC
+  bankAccountId        Int?                   // Primary bankAccountId (legacy/single) or null for ALL
+  bankAccountIdsJson   String                 @default("[]") // JSON array of BankAccount IDs when SPECIFIC
+
+  // Safety & Auto-Add
+  autoAdd              Boolean                @default(false)
+  maxAutoAmount        Float?                 // Maximum amount ceiling for auto-add (safety guard)
+  effectiveFrom        DateTime?
+  effectiveTo          DateTime?
+  isEnabled            Boolean                @default(true)
+  status               String                 @default("ACTIVE") // ACTIVE | DISABLED | NEEDS_ATTENTION
+  attentionReason      String?
+
+  // Metrics
+  version              Int                    @default(1)
+  usageCount           Int                    @default(0)
+  lastUsedAt           DateTime?
+  overrideCount        Int                    @default(0)
+
+  // Conditions & Actions
+  conditionsJson       String                 // JSON array of RuleConditionDef
+  actionType           String                 @default("CATEGORIZE") // CATEGORIZE | TRANSFER | EXCLUDE
+  transactionType      String?                // EXPENSE | DEPOSIT | TRANSFER | CUSTOMER_PAYMENT | VENDOR_PAYMENT
+  payeeExtractMode     String                 @default("NONE") // NONE | FIXED | EXTRACT_FROM_TEXT
+  targetPayeeId        Int?
+  targetPayeeName      String?
+  targetAccountId      Int?
+  targetTaxRate        Float?
+  itcEligibility       String?                // ELIGIBLE | INELIGIBLE | BLOCKED_17_5
+  isRcm                Boolean                @default(false)
+  tdsSection           String?
+  targetMemoTemplate   String?
+  targetTagsJson       String?                @default("[]")
+  excludeReason        String?
+  transferAccountId    Int?                   // Destination BankAccount ID for transfers
+
+  // Split Lines
+  hasSplits            Boolean                @default(false)
+  splitMode            String?                // PERCENTAGE | FIXED_AMOUNT
+  splitsJson           String?                // JSON array of RuleSplitLineDef
+
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  createdBy            String?
+
+  applications         BankRuleApplication[]
+  versions             BankRuleVersion[]
 
   @@index([companyId, isEnabled, priority])
+}
+
+model BankRuleVersion {
+  id         Int      @id @default(autoincrement())
+  ruleId     Int
+  version    Int
+  ruleJson   String   // Complete snapshot of the rule definition at this version
+  createdAt  DateTime @default(now())
+  createdBy  String?
+
+  rule       BankRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, version])
+  @@index([ruleId])
+}
+
+model BankRuleApplication {
+  id                    Int          @id @default(autoincrement())
+  companyId             Int
+  ruleId                Int
+  ruleVersion           Int
+  feedLineId            Int
+  mode                  String       // SUGGESTED | AUTO_ADDED
+  resultTransactionId   Int?
+  resultTransactionType String?
+  isUndone              Boolean      @default(false)
+  undoneAt              DateTime?
+  undoneBy              String?
+  isOverridden          Boolean      @default(false)
+  appliedAt             DateTime     @default(now())
+
+  rule                  BankRule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  feedLine              BankFeedLine @relation(fields: [feedLineId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, ruleId, appliedAt])
+  @@index([feedLineId])
 }
 
 model Reconciliation {

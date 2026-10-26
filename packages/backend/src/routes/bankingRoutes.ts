@@ -23,14 +23,26 @@ import {
   excludeFeedLine,
   undoFeedLine,
   undoBatch,
-  listBankRules,
-  createBankRule,
   getReconciliationHistory,
   startReconciliation,
   updateReconciliationItems,
   finishReconciliation,
   undoReconciliation,
 } from "../controllers/banking/bankFeedController";
+import {
+  listBankRules,
+  getBankRuleById,
+  createBankRule,
+  updateBankRule,
+  deleteBankRule,
+  reorderBankRules,
+  previewBankRule,
+  applyRulesNow,
+  seedStarterRules,
+  exportBankRules,
+  importBankRules,
+  undoAllByRule,
+} from "../controllers/banking/bankRulesController";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -66,7 +78,21 @@ bankingRoutes.post("/:id/feed/:lineId/exclude", excludeFeedLine);
 bankingRoutes.post("/:id/feed/:lineId/undo", undoFeedLine);
 bankingRoutes.post("/:id/batches/:batchId/undo", undoBatch);
 
-// Bank Rules
+// Bank Rules Engine (QBO Equivalent)
+bankingRoutes.get("/rules", listBankRules);
+bankingRoutes.post("/rules", createBankRule);
+bankingRoutes.get("/rules/export", exportBankRules);
+bankingRoutes.post("/rules/import", importBankRules);
+bankingRoutes.post("/rules/reorder", reorderBankRules);
+bankingRoutes.post("/rules/preview", previewBankRule);
+bankingRoutes.post("/rules/apply-now", applyRulesNow);
+bankingRoutes.post("/rules/starter-library", seedStarterRules);
+bankingRoutes.get("/rules/:id", getBankRuleById);
+bankingRoutes.put("/rules/:id", updateBankRule);
+bankingRoutes.delete("/rules/:id", deleteBankRule);
+bankingRoutes.post("/rules/:id/undo-all", undoAllByRule);
+
+// Legacy account-scoped rules
 bankingRoutes.get("/:id/rules", listBankRules);
 bankingRoutes.post("/:id/rules", createBankRule);
 

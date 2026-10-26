@@ -46,6 +46,17 @@ export interface BankFeedLine {
   excludeReason?: string;
   source: string;
   ruleId?: number;
+  ruleVersion?: number;
+  ruleMode?: "SUGGESTED" | "AUTO_ADDED";
+  ruleApplications?: Array<{
+    id: number;
+    ruleId: number;
+    rule?: {
+      id: number;
+      name: string;
+      autoAdd: boolean;
+    };
+  }>;
   suggestedType?: string;
   suggestedPayeeId?: number;
   suggestedAccountId?: number;
@@ -222,7 +233,7 @@ export const bankingService = {
   },
   async listFeedLines(
     id: number | string,
-    params: { status?: string; search?: string; from?: string; to?: string; txnType?: string } = {}
+    params: { status?: string; search?: string; from?: string; to?: string; txnType?: string; ruleFilter?: string } = {}
   ) {
     const response = await api.get(`/bank-accounts/${id}/feed`, { params });
     return response.data.data as BankFeedResponse;

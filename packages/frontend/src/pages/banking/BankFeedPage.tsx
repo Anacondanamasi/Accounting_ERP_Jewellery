@@ -40,6 +40,8 @@ import {
 } from "@/services/bankingService";
 import { accountsService } from "@/services/accountsService";
 import { BankingTabs } from "./BankingTabs";
+import { RuleBuilderDrawer } from "./RuleBuilderDrawer";
+import type { BankRuleItem } from "@/services/bankRulesService";
 
 export const BankFeedPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,6 +54,10 @@ export const BankFeedPage = () => {
   const [txnTypeFilter, setTxnTypeFilter] = useState("ALL");
   const [selectedLineIds, setSelectedLineIds] = useState<number[]>([]);
   const [expandedLineId, setExpandedLineId] = useState<number | null>(null);
+  const [ruleFilter, setRuleFilter] = useState("ALL");
+  const [isRuleDrawerOpen, setIsRuleDrawerOpen] = useState(false);
+  const [ruleDrawerLine, setRuleDrawerLine] = useState<BankFeedLine | null>(null);
+  const [ruleDrawerRule, setRuleDrawerRule] = useState<BankRuleItem | null>(null);
 
   // Upload modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -88,12 +94,13 @@ export const BankFeedPage = () => {
     isLoading: loadingFeed,
     refetch: refetchFeed,
   } = useQuery({
-    queryKey: ["bank-feed", accountId, activeTab, searchQuery, txnTypeFilter],
+    queryKey: ["bank-feed", accountId, activeTab, searchQuery, txnTypeFilter, ruleFilter],
     queryFn: () =>
       bankingService.listFeedLines(accountId, {
         status: activeTab,
         search: searchQuery || undefined,
         txnType: txnTypeFilter === "ALL" ? undefined : txnTypeFilter,
+        ruleFilter: ruleFilter === "ALL" ? undefined : ruleFilter,
       }),
     enabled: Boolean(accountId),
   });
@@ -229,6 +236,37 @@ export const BankFeedPage = () => {
     }
   };
 
+
+  // Keyboard shortcut listener: R (create rule from line) & Ctrl+Shift+R (rules page)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || "").toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea" || activeTag === "select") {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        navigate("/banking/rules");
+        return;
+      }
+      if (e.key === "r" || e.key === "R") {
+        const targetLine = expandedLineId
+          ? lines.find((l) => l.id === expandedLineId)
+          : selectedLineIds.length > 0
+          ? lines.find((l) => l.id === selectedLineIds[0])
+          : null;
+        if (targetLine) {
+          e.preventDefault();
+          setRuleDrawerLine(targetLine);
+          setRuleDrawerRule(null);
+          setIsRuleDrawerOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [expandedLineId, selectedLineIds, lines, navigate]);
+
   const toggleSelectLine = (id: number) => {
     setSelectedLineIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
@@ -240,6 +278,17 @@ export const BankFeedPage = () => {
         subtitle="Review, categorize, and reconcile statement lines with single-click ledger posting"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/banking/rules")}
+              type="button"
+              className="text-amber-800 border-amber-300 hover:bg-amber-50"
+              title="Manage Bank Automation Rules (Ctrl+Shift+R)"
+            >
+              <Sparkles className="mr-1.5 h-4 w-4 text-amber-600" />
+              Bank Rules
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -411,6 +460,16 @@ export const BankFeedPage = () => {
 
           <div className="flex items-center gap-2">
             <select
+              value={ruleFilter}
+              onChange={(e) => setRuleFilter(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-white px-2.5 text-xs text-charcoal outline-none font-medium"
+            >
+              <option value="ALL">All Rules / Normal</option>
+              <option value="WITH_RULE">Rule Recognized</option>
+              <option value="AUTO_ADDED">Auto-Added by Rule</option>
+              <option value="SUGGESTED">Suggested by Rule</option>
+            </select>
+            <select
               value={txnTypeFilter}
               onChange={(e) => setTxnTypeFilter(e.target.value)}
               className="h-9 rounded-lg border border-border bg-white px-2.5 text-xs text-charcoal outline-none"
@@ -536,11 +595,36 @@ export const BankFeedPage = () => {
                                 Ref: {line.reference}
                               </div>
                             )}
-                            {line.ruleId && (
+                            {line.ruleApplications && line.ruleApplications.length > 0 && line.ruleApplications[0] ? (
+                              (() => {
+                                const app = line.ruleApplications[0];
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate(`/banking/rules?highlight=${app.ruleId}`);
+                                    }}
+                                    className={`inline-flex items-center gap-1 mt-0.5 rounded px-1.5 py-0.5 text-[9px] font-semibold border transition-all ${
+                                      line.ruleMode === "AUTO_ADDED"
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                                        : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                                    }`}
+                                    title={`Rule: ${app.rule?.name || app.ruleId} (${line.ruleMode === "AUTO_ADDED" ? "Auto-Added" : "Suggested"}). Click to view rule.`}
+                                  >
+                                    <Sparkles className="h-2.5 w-2.5 text-amber-600" />
+                                    <span>{app.rule?.name || `Rule #${line.ruleId}`}</span>
+                                    {line.ruleMode === "AUTO_ADDED" && (
+                                      <span className="text-[8px] uppercase tracking-wide bg-emerald-200/60 text-emerald-900 rounded px-1 ml-0.5 font-bold">Auto</span>
+                                    )}
+                                  </button>
+                                );
+                              })()
+                            ) : line.ruleId ? (
                               <span className="inline-flex items-center gap-1 mt-0.5 rounded bg-amber-50 px-1.5 py-0.2 text-[9px] font-semibold text-amber-700 border border-amber-200">
-                                <Sparkles className="h-2.5 w-2.5" /> Rule Applied
+                                <Sparkles className="h-2.5 w-2.5" /> Rule #{line.ruleId}
                               </span>
-                            )}
+                            ) : null}
                           </div>
 
                           <div className="w-40 px-3 truncate text-muted text-xs">
@@ -855,6 +939,20 @@ export const BankFeedPage = () => {
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    onClick={() => {
+                                      setRuleDrawerLine(line);
+                                      setRuleDrawerRule(null);
+                                      setIsRuleDrawerOpen(true);
+                                    }}
+                                    type="button"
+                                    className="text-amber-800 border-amber-300 hover:bg-amber-50"
+                                    title="Create a reusable automation rule from this statement line (Press R)"
+                                  >
+                                    <Sparkles className="mr-1 h-3.5 w-3.5 text-amber-600" /> Create Rule from Line
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
                                     onClick={() => setExpandedLineId(null)}
                                     type="button"
                                   >
@@ -968,6 +1066,23 @@ export const BankFeedPage = () => {
           </div>
         </div>
       )}
+      <RuleBuilderDrawer
+        isOpen={isRuleDrawerOpen}
+        rule={ruleDrawerRule}
+        initialLine={ruleDrawerLine}
+        accounts={coaAccounts.map((a: any) => ({ id: Number(a.id), name: a.name, code: a.code }))}
+        onClose={() => {
+          setIsRuleDrawerOpen(false);
+          setRuleDrawerLine(null);
+          setRuleDrawerRule(null);
+        }}
+        onSuccess={() => {
+          setIsRuleDrawerOpen(false);
+          setRuleDrawerLine(null);
+          setRuleDrawerRule(null);
+          void refetchFeed();
+        }}
+      />
     </div>
   );
 };

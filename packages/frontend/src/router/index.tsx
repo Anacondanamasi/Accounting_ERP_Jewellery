@@ -37,6 +37,7 @@ import { JobWorkPage } from "@/pages/inventory/JobWorkPage";
 import { BankAccountsPage } from "@/pages/banking/BankAccountsPage";
 import { BankTransactionsPage } from "@/pages/banking/BankTransactionsPage";
 import { BankFeedPage } from "@/pages/banking/BankFeedPage";
+import { BankRulesPage } from "@/pages/banking/BankRulesPage";
 import { BankImportPage } from "@/pages/banking/BankImportPage";
 import { BankReconciliationPage } from "@/pages/banking/BankReconciliationPage";
 import { ChequeManagementPage } from "@/pages/banking/ChequeManagementPage";
@@ -197,6 +198,7 @@ export const router = createBrowserRouter([
       { path: "banking", element: <BankAccountsPage /> },
       { path: "banking/transactions", element: <BankFeedPage /> },
       { path: "banking/feed", element: <BankFeedPage /> },
+      { path: "banking/rules", element: <BankRulesPage /> },
       { path: "banking/manual-transactions", element: <BankTransactionsPage /> },
       { path: "banking/import", element: <BankImportPage /> },
       { path: "banking/reconcile", element: <BankReconciliationPage /> },

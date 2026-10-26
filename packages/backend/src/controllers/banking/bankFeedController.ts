@@ -63,6 +63,7 @@ export const listFeedLines = async (req: Request, res: Response) => {
   const from = req.query.from ? new Date(String(req.query.from)) : undefined;
   const to = req.query.to ? new Date(String(req.query.to)) : undefined;
   const txnType = req.query.txnType ? String(req.query.txnType) : undefined;
+  const ruleFilter = req.query.ruleFilter ? String(req.query.ruleFilter) : undefined;
 
   const where: any = {
     companyId,
@@ -82,6 +83,16 @@ export const listFeedLines = async (req: Request, res: Response) => {
   if (txnType === "MONEY_IN") where.credit = { gt: 0 };
   if (txnType === "MONEY_OUT") where.debit = { gt: 0 };
 
+  if (ruleFilter === "WITH_RULE") {
+    where.ruleId = { not: null };
+  } else if (ruleFilter === "AUTO_ADDED") {
+    where.ruleMode = "AUTO_ADDED";
+  } else if (ruleFilter === "SUGGESTED") {
+    where.ruleMode = "SUGGESTED";
+  } else if (ruleFilter && !isNaN(Number(ruleFilter))) {
+    where.ruleId = Number(ruleFilter);
+  }
+
   const [lines, totalCount, forReviewCount, categorizedCount, excludedCount, bankAcc] = await Promise.all([
     prisma.bankFeedLine.findMany({
       where,
@@ -89,6 +100,15 @@ export const listFeedLines = async (req: Request, res: Response) => {
       take: 100,
       include: {
         matches: true,
+        ruleApplications: {
+          include: {
+            rule: {
+              select: { id: true, name: true, autoAdd: true },
+            },
+          },
+          orderBy: { appliedAt: "desc" },
+          take: 1,
+        },
       },
     }),
     prisma.bankFeedLine.count({ where }),
@@ -277,6 +297,7 @@ export const listBankRules = async (req: Request, res: Response) => {
 
 export const createBankRule = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
+  const actor = getActor(req);
   const rule = await prisma.bankRule.create({
     data: {
       companyId,
@@ -285,14 +306,15 @@ export const createBankRule = async (req: Request, res: Response) => {
       applyToDirection: req.body.applyToDirection || "BOTH",
       bankAccountId: req.body.bankAccountId ? Number(req.body.bankAccountId) : null,
       actionType: req.body.actionType || "CATEGORIZE",
-      targetType: req.body.targetType,
-      targetPayee: req.body.targetPayee,
+      transactionType: req.body.transactionType || req.body.targetType,
+      targetPayeeName: req.body.targetPayeeName || req.body.targetPayee,
       targetAccountId: req.body.targetAccountId ? Number(req.body.targetAccountId) : null,
       targetTaxRate: req.body.targetTaxRate !== undefined ? Number(req.body.targetTaxRate) : null,
-      targetMemo: req.body.targetMemo,
+      targetMemoTemplate: req.body.targetMemoTemplate || req.body.targetMemo,
       autoAdd: Boolean(req.body.autoAdd),
       isEnabled: req.body.isEnabled !== false,
       conditionsJson: JSON.stringify(req.body.conditions || []),
+      createdBy: actor,
     },
   });
   return created(res, rule, "Bank rule created");
