@@ -1,4 +1,4 @@
-# ACCOUNTING_AI_RULES.md
+﻿# ACCOUNTING_AI_RULES.md
 
 ## Master Accounting, Tax, Ledger, Reconciliation, and Reporting Policy for AI Agents
 
@@ -169,9 +169,9 @@ The calculation must follow the application's documented treatment of discounts,
 Ageing must use the configured policy, normally based on the invoice due date:
 
 - Current / not yet due.
-- 1–30 days overdue.
-- 31–60 days overdue.
-- 61–90 days overdue.
+- 1â€“30 days overdue.
+- 31â€“60 days overdue.
+- 61â€“90 days overdue.
 - More than 90 days overdue.
 
 These buckets must be configurable.
@@ -852,6 +852,77 @@ If any mandatory requirement is unmet, report the feature as incomplete and iden
 
 ---
 
+---
+
+# 21. EXECUTABLE & TESTABLE ACCOUNTING INVARIANTS
+
+### Invariant 1: Double-Entry Equality
+* **Rule**: For every posted journal entry:
+  $$\sum \text{Debit} = \sum \text{Credit}$$
+* **Tolerance**: â‚¹0.00 (exact equality at defined precision).
+* **Enforcement**:
+  * Backend validator in `journalController.ts`: `Math.abs(debit - credit) <= 0.01`
+  * Frontend balancing indicator in `JournalEntryForm.tsx` (blocks posting if unbalanced).
+
+---
+
+### Invariant 2: Balance Sheet Equilibrium
+* **Rule**: At every reporting date:
+  $$\text{Assets} = \text{Liabilities} + \text{Equity}$$
+* **Components**:
+  * $\text{Assets} = \text{Current Assets} + \text{Non-Current Assets}$
+  * $\text{Liabilities} = \text{Current Liabilities} + \text{Non-Current Liabilities}$
+  * $\text{Equity} = \text{Owner Capital} + \text{Retained Earnings} + \text{Current Period P&L}$
+
+---
+
+### Invariant 3: Accounts Receivable (AR) Reconciliation
+* **Rule**: As of any date $T$:
+  $$\text{GL Balance (Account 1100)} = \sum \text{Customer Subledger Balances} = \text{Total AR Aging Open Items}$$
+* **Controls**:
+  * Every customer invoice post atomics credit to Sales + Output GST and debit to AR Control (1100).
+  * Every receipt reduces customer receivable and AR Control balance.
+  * Direct journal entries touching Account 1100 require a mandatory `Customer` tag.
+
+---
+
+### Invariant 4: Accounts Payable (AP) Reconciliation
+* **Rule**: As of any date $T$:
+  $$\text{GL Balance (Account 2100)} = \sum \text{Supplier Subledger Balances} = \text{Total AP Aging Open Items}$$
+* **Controls**:
+  * Every purchase bill post atomics debit to Purchase + Input GST and credit to AP Control (2100).
+  * Every payment reduces supplier payable and AP Control balance.
+  * Direct journal entries touching Account 2100 require a mandatory `Supplier` tag.
+
+---
+
+### Invariant 5: GST Output & Input Symmetry (India-First)
+* **Rule**:
+  $$\text{Output CGST} = \text{Output SGST} \quad (\text{for Intrastate transactions})$$
+  $$\text{Input CGST} = \text{Input SGST} \quad (\text{for Intrastate transactions})$$
+  $$\text{IGST} = \text{Taxable Amount} \times \text{Rate} \quad (\text{for Interstate transactions})$$
+* **Accounts**:
+  * Intrastate: CGST (Account 2210/1210) & SGST (Account 2220/1220) split 50/50.
+  * Interstate: IGST (Account 2230/1230) full rate.
+
+---
+
+### Invariant 6: Inventory & Metal Weight Conservation
+* **Rule**: For all physical inventory movements:
+  $$\text{Closing Stock (g)} = \text{Opening Stock (g)} + \text{Purchased (g)} - \text{Sold (g)} \pm \text{Adjustments (g)}$$
+* **Controls**:
+  * Inventory valuation in GL Control matches the stock ledger value as of the same date.
+  * Weight balance tracked in grams to 3 decimal places ($0.001\text{g}$).
+
+---
+
+### Invariant 7: Atomic Posting & Immutability
+* **Rule**:
+  * Any post operation touching General Ledger and Subledgers must be executed in a single atomic database transaction (`prisma.$transaction`).
+  * Posted records cannot be silently modified or deleted; corrections must be made via reversal or credit/debit notes.
+
+
+---
 # FINAL DIRECTIVE TO THE AI AGENT
 
 You are operating on accounting software where financial accuracy, auditability, and legal compliance take priority over convenience or speed.
