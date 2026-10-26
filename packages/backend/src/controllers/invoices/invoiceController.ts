@@ -9,52 +9,12 @@ import {
 } from "../../lib/accounting";
 import { prisma } from "../../lib/prisma";
 import { getCompanyId, getActor } from "../../lib/requestUtils";
-
+import { generateInvoicePdf } from "../../services/invoicePdfService";
 
 const invoiceInclude = {
   customer: true,
   lines: { orderBy: { createdAt: "asc" as const } },
   payments: { orderBy: { date: "desc" as const } },
-};
-
-const escapePdfText = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-
-const buildSimplePdf = (lines: string[]) => {
-  const contentLines: string[] = ["BT", "/F1 11 Tf", "50 790 Td"];
-  lines.forEach((line, index) => {
-    const safe = escapePdfText(line);
-    if (index === 0) {
-      contentLines.push(`(${safe}) Tj`);
-    } else {
-      contentLines.push(`0 -16 Td (${safe}) Tj`);
-    }
-  });
-  contentLines.push("ET");
-  const stream = contentLines.join("\n");
-
-  const objects = [
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
-    "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-    `5 0 obj\n<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream\nendobj\n`,
-  ];
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  for (const obj of objects) {
-    offsets.push(Buffer.byteLength(pdf, "utf8"));
-    pdf += obj;
-  }
-
-  const xrefOffset = Buffer.byteLength(pdf, "utf8");
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += "0000000000 65535 f \n";
-  for (let i = 1; i < offsets.length; i += 1) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf, "utf8");
 };
 
 const lineCreates = async (
@@ -157,14 +117,36 @@ export const listInvoices = async (req: Request, res: Response) => {
 export const getInvoiceById = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
 
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: Number(req.params.id), companyId },
-    include: invoiceInclude,
-  });
+  const [invoice, company, bankAccount] = await Promise.all([
+    prisma.invoice.findFirst({
+      where: { id: Number(req.params.id), companyId },
+      include: invoiceInclude,
+    }),
+    prisma.company.findUnique({
+      where: { id: companyId },
+    }),
+    prisma.account.findFirst({
+      where: {
+        companyId,
+        OR: [{ isBankAccount: true }, { type: "bank" }],
+      },
+      orderBy: { id: "asc" },
+    }),
+  ]);
+
   if (!invoice) return fail(res, 404, "INVOICE_NOT_FOUND", "Invoice not found");
-  
+
   const mappedInvoice = {
     ...invoice,
+    company: company || {
+      name: "HKS JEWELLERS",
+      legalName: "HKS JEWELLERS PVT. LTD.",
+      gstin: "24AAAAA0000A1Z5",
+      state: "Gujarat",
+      city: "Ahmedabad",
+      addressLine1: "101, Jewel Arcade, C.G. Road",
+    },
+    bankAccount: bankAccount || null,
     invoiceDate: invoice.date ? new Date(invoice.date).toISOString().slice(0, 10) : null,
     dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().slice(0, 10) : null,
   };
@@ -455,36 +437,44 @@ export const recordPayment = async (req: Request, res: Response) => {
 export const getInvoicePdf = async (req: Request, res: Response) => {
   const companyId = getCompanyId(req);
 
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: Number(req.params.id), companyId },
-    include: { customer: true, lines: { orderBy: { createdAt: "asc" } } },
-  });
+  const [invoice, company, bankAccount] = await Promise.all([
+    prisma.invoice.findFirst({
+      where: { id: Number(req.params.id), companyId },
+      include: {
+        customer: true,
+        lines: { orderBy: { createdAt: "asc" } },
+      },
+    }),
+    prisma.company.findUnique({
+      where: { id: companyId },
+    }),
+    prisma.account.findFirst({
+      where: {
+        companyId,
+        OR: [{ isBankAccount: true }, { type: "bank" }],
+      },
+      orderBy: { id: "asc" },
+    }),
+  ]);
+
   if (!invoice) return fail(res, 404, "INVOICE_NOT_FOUND", "Invoice not found");
 
-  const dateLabel = new Date(invoice.date).toISOString().slice(0, 10);
-  const pdfLines = [
-    "HKS Accounting - Tax Invoice",
-    `Invoice No: ${invoice.invoiceNo}`,
-    `Date: ${dateLabel}`,
-    `Customer: ${invoice.customer?.name ?? "-"}`,
-    "----------------------------------------------",
-    ...invoice.lines.slice(0, 18).map((line, idx) =>
-      `${idx + 1}. ${line.description} | ${Number(line.netWt).toFixed(3)}g | ${Number(line.ratePerGram).toFixed(2)} | ${Number(line.total).toFixed(2)}`,
-    ),
-    "----------------------------------------------",
-    `Sub Total: ${Number(invoice.subTotal).toFixed(2)}`,
-    `Discount: ${Number(invoice.discount).toFixed(2)}`,
-    `Taxable: ${Number(invoice.taxableAmount).toFixed(2)}`,
-    `GST: ${(Number(invoice.cgst) + Number(invoice.sgst) + Number(invoice.igst)).toFixed(2)}`,
-    `Grand Total: ${Number(invoice.grandTotal).toFixed(2)}`,
-    `Paid: ${Number(invoice.paidAmount).toFixed(2)}`,
-    `Balance: ${Number(invoice.balanceDue).toFixed(2)}`,
-  ];
+  const pdfBuffer = await generateInvoicePdf({
+    invoice,
+    company: company || {
+      name: "MANAV JEWELLERS",
+      legalName: "MANAV JEWELLERS PVT. LTD.",
+      gstin: "24AAAAA0000A1Z5",
+      state: "Gujarat",
+      city: "Ahmedabad",
+      addressLine1: "101, Jewel Arcade, C.G. Road",
+    },
+    bankAccount,
+  });
 
-  const pdf = buildSimplePdf(pdfLines);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${invoice.invoiceNo}.pdf"`);
-  return res.status(200).send(pdf);
+  return res.status(200).send(pdfBuffer);
 };
 
 export const sendInvoiceEmail = async (_req: Request, res: Response) =>

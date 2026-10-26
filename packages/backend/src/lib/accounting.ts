@@ -446,6 +446,13 @@ export const resolveAccountingAccounts = async (
     preferredCode: "2300",
     keywords: ["customer advance", "advance from customer", "unearned revenue"],
   });
+  const supplierAdvanceId = await resolve({
+    type: "asset",
+    preferredName: "Advance to Suppliers",
+    preferredGroup: "Current Assets",
+    preferredCode: "1300",
+    keywords: ["advance to supplier", "supplier advance", "advances recoverable"],
+  });
 
   return {
     receivableId,
@@ -457,6 +464,7 @@ export const resolveAccountingAccounts = async (
     cashId,
     bankId,
     customerAdvanceId,
+    supplierAdvanceId,
   };
 };
 

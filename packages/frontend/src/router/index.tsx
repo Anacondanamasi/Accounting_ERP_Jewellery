@@ -19,6 +19,7 @@ import { ExpenseListPage } from "@/pages/expenses/ExpenseListPage";
 import { InvoiceListPage } from "@/pages/invoices/InvoiceListPage";
 import { InvoiceFormPage } from "@/pages/invoices/InvoiceFormPage";
 import { InvoiceViewPage } from "@/pages/invoices/InvoiceViewPage";
+import { InvoicePrintPage } from "@/pages/invoices/InvoicePrintPage";
 import { CustomerListPage } from "@/pages/customers/CustomerListPage";
 import { CustomerDetailPage } from "@/pages/customers/CustomerDetailPage";
 import { CustomerFormPage } from "@/pages/customers/CustomerFormPage";
@@ -125,6 +126,14 @@ export const router = createBrowserRouter([
   { path: "/onboarding/create-company", element: <CreateCompanyOnboardingPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   {
+    path: "/invoices/:id/print",
+    element: (
+      <ProtectedRoute>
+        <InvoicePrintPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
     path: "/",
     element: <RootRoute />,
     children: [
@@ -137,6 +146,7 @@ export const router = createBrowserRouter([
       { path: "journal/:id/edit", element: <JournalEntryForm /> },
       { path: "expenses", element: <ExpenseListPage /> },
       { path: "expenses/new", element: <ExpenseFormPage /> },
+      { path: "expenses/:id/edit", element: <ExpenseFormPage /> },
       { path: "ledger", element: <AccountsPage /> },
       { path: "ledger/:accountId", element: <GeneralLedgerPage /> },
       { path: "trial-balance", element: <TrialBalancePage /> },
@@ -146,7 +156,7 @@ export const router = createBrowserRouter([
       { path: "day-book", element: <DayBookPage /> },
       { path: "invoices", element: <InvoiceListPage /> },
       { path: "invoices/new", element: <InvoiceFormPage /> },
-      { path: "invoices/:id", element: <InvoiceFormPage /> },
+      { path: "invoices/:id", element: <InvoiceViewPage /> },
       { path: "invoices/:id/edit", element: <InvoiceFormPage /> },
       { path: "credit-notes", element: <CreditNoteListPage /> },
       { path: "credit-notes/new", element: <CreditNoteFormPage /> },

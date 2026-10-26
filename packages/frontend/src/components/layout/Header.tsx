@@ -1,4 +1,4 @@
-import { Bell, Search, LogOut, User, Building2 } from "lucide-react";
+import { Bell, Search, LogOut, User, Building2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
@@ -8,6 +8,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { companyService } from "@/services/companyService";
+import { triggerWorkstationLock } from "@/components/auth/WorkstationLockModal";
 
 
 const labelFromPath = (path: string): string =>
@@ -103,7 +104,7 @@ export const Header = () => {
   };
 
   return (
-    <header className="fixed right-0 top-0 z-20 flex h-header items-center justify-between border-b border-border bg-card px-6" style={{ left: "var(--sidebar-w)" }}>
+    <header className="fixed right-0 top-0 z-20 flex h-header items-center justify-between border-b border-border bg-card px-6 print:hidden" style={{ left: "var(--sidebar-w)" }}>
       <div className="text-sm font-medium text-charcoal">{breadcrumb}</div>
       <button
         className="flex w-[380px] items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2 text-left text-sm text-muted"
@@ -132,6 +133,14 @@ export const Header = () => {
           {currentCompany?.role ?? "viewer"}
         </span>
         <div className="text-sm text-muted">{format(new Date(), "dd MMM yyyy")}</div>
+        <button
+          onClick={() => triggerWorkstationLock()}
+          className="relative rounded-full p-2 text-muted hover:bg-slate-100 hover:text-charcoal transition-colors"
+          type="button"
+          title="Lock Workstation (PIN lock)"
+        >
+          <Lock className="h-4 w-4" />
+        </button>
         <button className="relative rounded-full p-2 hover:bg-slate-100" type="button">
           <Bell className="h-5 w-5 text-charcoal" />
           {unread > 0 && (
@@ -186,6 +195,17 @@ export const Header = () => {
               </div>
 
               <div className="border-t border-border pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    triggerWorkstationLock();
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-xs font-medium text-charcoal hover:bg-slate-50 transition-colors"
+                >
+                  <Lock className="h-4 w-4 text-gold" />
+                  Lock Workstation
+                </button>
                 <button
                   type="button"
                   onClick={handleHeaderLogout}

@@ -1,7 +1,9 @@
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma";
-import { canonicalAccountType, accountClosingBalance, round } from "../lib/accounting";
+import { canonicalAccountType, accountClosingBalance } from "../lib/accounting";
+
+const round = (val: number): number => Math.round(val * 100) / 100;
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 

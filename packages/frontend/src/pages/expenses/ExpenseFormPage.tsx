@@ -1,9 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Save, X } from "lucide-react";
+import { Save, X, ArrowLeft, Trash2, Plus } from "lucide-react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
@@ -28,6 +29,8 @@ type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
 export const ExpenseFormPage = () => {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const editing = Boolean(id);
 
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
@@ -51,20 +54,51 @@ export const ExpenseFormPage = () => {
     queryFn: () => supplierService.list(),
   });
 
+  const { data: existing } = useQuery({
+    queryKey: ["expense", id],
+    queryFn: () => expenseService.getById(id!),
+    enabled: editing,
+  });
+
+  useEffect(() => {
+    if (existing) {
+      form.reset({
+        date: new Date(existing.date).toISOString().slice(0, 10),
+        paymentMethodLedgerId: existing.paymentMethodLedgerId || 0,
+        expenseLedgerId: existing.expenseLedgerId || 0,
+        amount: Number(existing.amount),
+        supplierId: existing.supplierId || null,
+        narration: existing.narration || "",
+      });
+    }
+  }, [existing, form]);
+
   // Filter only Cash / Bank accounts for the payment method
   const cashBankAccounts = (accounts as any[]).filter((acc) => {
-    const type = String(acc.type).toLowerCase();
-    const text = `${acc.code} ${acc.name} ${acc.group}`.toLowerCase();
+    const type = String(acc?.type || "").toLowerCase();
+    const group = String(acc?.group || "").toLowerCase();
+    const name = String(acc?.name || "").toLowerCase();
+    const code = String(acc?.code || "").toLowerCase();
+    const text = `${code} ${name} ${group} ${type}`;
     return (
-      (type === "asset" || type === "assets") &&
-      /(cash|bank|current account|savings account|petty cash)/.test(text)
-    );
+      type === "bank" ||
+      group.includes("bank") ||
+      group.includes("cash") ||
+      group.includes("asset") ||
+      type.includes("asset")
+    ) && /(cash|bank|vault|petty|upi|card|current account|savings|hdfc|sbi|icici|axis)/.test(text);
   });
 
   // Filter only Expense accounts for the expense ledger
-  const expenseAccounts = (accounts as any[]).filter((acc) =>
-    ["expense", "expenses"].includes(String(acc.type).toLowerCase())
-  );
+  const expenseAccounts = (accounts as any[]).filter((acc) => {
+    const type = String(acc?.type || "").toLowerCase();
+    const group = String(acc?.group || "").toLowerCase();
+    return (
+      ["expense", "expenses", "cogs"].includes(type) ||
+      group.includes("expense") ||
+      group.includes("cost of goods")
+    );
+  });
 
   const cashBankOptions = cashBankAccounts.map((a: any) => ({
     value: String(a.id),
@@ -85,9 +119,10 @@ export const ExpenseFormPage = () => {
   }));
 
   const saveMutation = useMutation({
-    mutationFn: (values: ExpenseFormValues) => expenseService.create(values as any),
+    mutationFn: (values: ExpenseFormValues) =>
+      editing ? expenseService.update(id!, values as any) : expenseService.create(values as any),
     onSuccess: () => {
-      toast.success("Expense recorded and journal posted successfully!");
+      toast.success(editing ? "Expense updated successfully!" : "Expense recorded and journal posted successfully!");
       navigate("/expenses");
     },
     onError: (err: any) => {
@@ -95,6 +130,19 @@ export const ExpenseFormPage = () => {
       const detail = err?.response?.data?.error?.details?.[0]?.message;
       const msg = err?.response?.data?.error?.message ?? err?.message ?? "Failed to save expense";
       toast.error(detail ?? msg);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => expenseService.delete(id!),
+    onSuccess: () => {
+      toast.success("Expense deleted successfully");
+      navigate("/expenses");
+    },
+    onError: (err: any) => {
+      console.error(err);
+      const msg = err?.response?.data?.error?.message ?? err?.message ?? "Failed to delete expense";
+      toast.error(msg);
     },
   });
 
@@ -113,25 +161,59 @@ export const ExpenseFormPage = () => {
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-20">
       <PageHeader
-        title="Add Direct Expense"
-        subtitle="Record operational expenses paid directly from Cash or Bank"
+        title={editing ? "Edit Direct Expense" : "Add Direct Expense"}
+        subtitle={
+          editing
+            ? `Updating expense voucher #${id}`
+            : "Record operational expenses paid directly from Cash or Bank"
+        }
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              className="flex h-10 items-center gap-2 rounded-btn border border-border bg-white px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              className="flex h-9 items-center gap-1.5 rounded-btn border border-border bg-white px-3.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
               onClick={() => navigate("/expenses")}
               type="button"
             >
-              <X className="h-4 w-4" /> Cancel
+              <ArrowLeft className="h-3.5 w-3.5" /> Back
             </button>
+
+            {editing && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate("/expenses/new")}
+                  className="flex h-9 items-center gap-1.5 rounded-btn border border-gold/40 bg-gold/10 px-3.5 text-xs font-bold text-gold-dark hover:bg-gold/20 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" /> + Create New
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Are you sure you want to delete Expense voucher #${id}? This will permanently remove this record and reverse all associated journal entries.`
+                      )
+                    ) {
+                      deleteMutation.mutate();
+                    }
+                  }}
+                  className="flex h-9 items-center gap-1.5 rounded-btn border border-ruby/30 bg-ruby/5 px-3.5 text-xs font-bold text-ruby hover:bg-ruby hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                </button>
+              </>
+            )}
+
             <button
-              className="flex h-10 items-center gap-2 rounded-btn bg-gold px-5 text-sm font-bold text-white shadow-lg shadow-gold/20 hover:bg-gold-dark disabled:opacity-40 transition-all"
+              className="flex h-9 items-center gap-1.5 rounded-btn bg-gold px-5 text-xs font-bold text-white shadow-md hover:bg-gold-dark disabled:opacity-40 transition-all"
               disabled={saveMutation.isPending}
               onClick={onSubmit}
               type="button"
             >
-              <Save className="h-4 w-4" />
-              {saveMutation.isPending ? "Saving…" : "Save & Post"}
+              <Save className="h-3.5 w-3.5" />
+              {saveMutation.isPending ? "Saving…" : editing ? "Update Expense" : "Save & Post"}
             </button>
           </div>
         }
@@ -266,6 +348,49 @@ export const ExpenseFormPage = () => {
           </table>
         </div>
       )}
+
+      {/* Bottom Actions */}
+      <div className="flex items-center justify-between pt-4 border-t border-border">
+        <div>
+          {editing && (
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Are you sure you want to delete Expense voucher #${id}? This will permanently remove this record and reverse all associated journal entries.`
+                  )
+                ) {
+                  deleteMutation.mutate();
+                }
+              }}
+              className="inline-flex h-10 items-center gap-2 rounded-btn border border-ruby/30 bg-ruby/5 px-4 text-sm font-semibold text-ruby hover:bg-ruby hover:text-white transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteMutation.isPending ? "Deleting..." : "Delete Expense"}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/expenses")}
+            className="h-10 rounded-btn border border-border bg-white px-5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saveMutation.isPending}
+            onClick={onSubmit}
+            className="inline-flex h-10 items-center gap-2 rounded-btn bg-gold px-6 text-sm font-bold text-white shadow-lg hover:bg-gold-dark transition-all disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            {saveMutation.isPending ? "Saving..." : editing ? "Update Expense" : "Save & Post"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

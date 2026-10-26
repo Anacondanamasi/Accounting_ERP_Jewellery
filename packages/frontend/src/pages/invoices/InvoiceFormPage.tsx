@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { invoiceFormSchema, type InvoiceFormInput } from "@jewelledger/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Printer, Tag, Trash2, Save, Send, Copy, Download, CreditCard, Check, AlertCircle } from "lucide-react";
+import { Plus, Printer, Tag, Trash2, Save, Send, Copy, Download, CreditCard, Check, AlertCircle, Eye } from "lucide-react";
 import { QuickCustomerModal } from "@/components/shared/QuickCustomerModal";
 import { RecordPaymentModal } from "@/pages/invoices/RecordPaymentModal";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -188,49 +188,14 @@ export const InvoiceFormPage = () => {
     },
   });
 
-  const openInvoicePdf = async (invoiceId: number, print = false) => {
-    try {
-      const blob = await invoiceService.getPdf(invoiceId);
-      const url = URL.createObjectURL(blob);
-      const opened = window.open(url, "_blank");
-      if (!opened) {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `invoice-${invoiceId}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        return;
-      }
-      if (print && opened) {
-        opened.addEventListener("load", () => {
-          opened.print();
-        });
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      console.error("PDF generation error:", error);
-      toast.error("Failed to generate PDF. Please try again.");
-    }
+  const handleDownloadPdf = () => {
+    if (!id) return;
+    window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
   };
 
-  const handleDownloadPdf = async () => {
+  const handlePrintPdf = () => {
     if (!id) return;
-    try {
-      await openInvoicePdf(Number(id), false);
-    } catch {
-      toast.error("Unable to download PDF");
-    }
-  };
-
-  const handlePrintPdf = async () => {
-    if (!id) return;
-    try {
-      await openInvoicePdf(Number(id), true);
-    } catch {
-      toast.error("Unable to print PDF");
-    }
+    window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
   };
 
   useEffect(() => {
@@ -391,6 +356,15 @@ export const InvoiceFormPage = () => {
                     Post
                   </Button>
                 )}
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/invoices/${id}`)}
+                  type="button"
+                >
+                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                  View Tax Invoice
+                </Button>
 
                 <Button
                   variant="outline"

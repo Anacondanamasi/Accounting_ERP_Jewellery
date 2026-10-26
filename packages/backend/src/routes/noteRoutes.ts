@@ -213,6 +213,40 @@ const registerNoteRoutes = (basePath: string, type: "CREDIT_NOTE" | "DEBIT_NOTE"
     });
     return ok(res, row, "Note updated");
   });
+
+  noteRoutes.delete(`${basePath}/:id`, async (req, res) => {
+    try {
+      const companyId = company(req);
+      const id = Number(req.params.id);
+
+      const existing = await prisma.noteDocument.findFirst({
+        where: { companyId, id, type },
+      });
+      if (!existing) return fail(res, 404, "NOTE_NOT_FOUND", "Note not found");
+
+      await prisma.$transaction(async (tx) => {
+        // 1. Delete journal entry & lines
+        const jes = await tx.journalEntry.findMany({
+          where: { companyId, type: `NOTE:${id}` },
+          select: { id: true },
+        });
+        if (jes.length > 0) {
+          const jeIds = jes.map((j) => j.id);
+          await tx.journalLine.deleteMany({ where: { entryId: { in: jeIds }, companyId } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds }, companyId } });
+        }
+
+        // 2. Delete note lines & note document
+        await tx.noteLine.deleteMany({ where: { noteId: id, companyId } });
+        await tx.noteDocument.delete({ where: { id } });
+      });
+
+      return ok(res, { id }, "Note deleted successfully");
+    } catch (err: any) {
+      console.error("Error deleting note:", err);
+      return fail(res, 500, "DELETE_NOTE_ERROR", err?.message || "Failed to delete note");
+    }
+  });
 };
 
 registerNoteRoutes("/credit-notes", "CREDIT_NOTE", "CRN");

@@ -30,8 +30,12 @@ const createNoteService = (basePath: "/credit-notes" | "/debit-notes") => ({
     const response = await api.post(basePath, payload);
     return response.data.data;
   },
-  async update(id: number, payload: NotePayload) {
+  async update(id: number | string, payload: NotePayload) {
     const response = await api.put(`${basePath}/${id}`, payload);
+    return response.data.data;
+  },
+  async delete(id: number | string) {
+    const response = await api.delete(`${basePath}/${id}`);
     return response.data.data;
   },
 });

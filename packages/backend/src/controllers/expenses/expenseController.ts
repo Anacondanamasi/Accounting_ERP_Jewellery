@@ -153,3 +153,166 @@ export const createDirectExpense = async (req: Request, res: Response) => {
 
   return created(res, result, "Direct expense recorded successfully");
 };
+
+export const getExpenseById = async (req: Request, res: Response) => {
+  try {
+    const companyId = getCompanyId(req);
+    const expenseId = Number(req.params.id);
+
+    const exp = await prisma.payment.findFirst({
+      where: { id: expenseId, companyId, type: "EXPENSE" },
+      include: {
+        supplier: { select: { id: true, name: true, code: true } },
+      },
+    });
+
+    if (!exp) return fail(res, 404, "EXPENSE_NOT_FOUND", "Expense not found");
+
+    const journal = await prisma.journalEntry.findFirst({
+      where: { companyId, type: `PAYMENT:${exp.id}`, status: "POSTED" },
+      include: { lines: true },
+    });
+
+    let expenseLedgerId: number | null = null;
+    let paymentMethodLedgerId: number | null = null;
+
+    if (journal) {
+      const linesWithAccounts = await Promise.all(
+        journal.lines.map(async (line) => {
+          const account = await prisma.account.findUnique({
+            where: { id: line.accountId },
+            select: { id: true, name: true, type: true },
+          });
+          return { ...line, account };
+        }),
+      );
+
+      const expLine = linesWithAccounts.find(
+        (l) => l.account?.type.toLowerCase() === "expense" || l.debit > 0,
+      );
+      const pmtLine = linesWithAccounts.find(
+        (l) => l.account?.type.toLowerCase() !== "expense" || l.credit > 0,
+      );
+
+      if (expLine) expenseLedgerId = expLine.accountId;
+      if (pmtLine) paymentMethodLedgerId = pmtLine.accountId;
+    }
+
+    return ok(res, {
+      id: exp.id,
+      date: exp.date,
+      amount: Number(exp.amount),
+      supplierId: exp.supplierId,
+      narration: exp.notes,
+      paymentMethodLedgerId,
+      expenseLedgerId,
+      supplier: exp.supplier,
+    });
+  } catch (err: any) {
+    return fail(res, 500, "GET_EXPENSE_ERROR", err?.message || "Failed to get expense");
+  }
+};
+
+export const updateDirectExpense = async (req: Request, res: Response) => {
+  try {
+    const companyId = getCompanyId(req);
+    const actor = getActor(req);
+    const expenseId = Number(req.params.id);
+
+    const parsed = directExpenseSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return fail(res, 400, "VALIDATION_ERROR", "Invalid expense payload", parsed.error.issues);
+    }
+
+    const { date, paymentMethodLedgerId, expenseLedgerId, amount, supplierId, narration } = parsed.data;
+
+    const existing = await prisma.payment.findFirst({
+      where: { id: expenseId, companyId, type: "EXPENSE" },
+    });
+    if (!existing) return fail(res, 404, "EXPENSE_NOT_FOUND", "Expense not found");
+
+    const [paymentAccount, expenseAccount] = await Promise.all([
+      prisma.account.findFirst({ where: { id: paymentMethodLedgerId, companyId } }),
+      prisma.account.findFirst({ where: { id: expenseLedgerId, companyId } }),
+    ]);
+
+    if (!paymentAccount) return fail(res, 400, "INVALID_ACCOUNT", "Payment method account not found");
+    if (!expenseAccount) return fail(res, 400, "INVALID_ACCOUNT", "Expense account not found");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.payment.update({
+        where: { id: expenseId },
+        data: {
+          supplierId: supplierId ?? null,
+          date,
+          mode: paymentAccount.name,
+          amount,
+          notes: narration || `Direct Expense: ${expenseAccount.name}`,
+        },
+      });
+
+      await upsertPostedJournalForSource(tx, {
+        companyId,
+        sourceKey: `PAYMENT:${updated.id}`,
+        entryPrefix: "EXP",
+        date,
+        narration: narration || `Direct Expense: ${expenseAccount.name}`,
+        actor,
+        lines: [
+          {
+            accountId: expenseLedgerId,
+            debit: amount,
+            credit: 0,
+            narration: narration || `Direct Expense: ${expenseAccount.name}`,
+          },
+          {
+            accountId: paymentMethodLedgerId,
+            debit: 0,
+            credit: amount,
+            narration: `Paid via: ${paymentAccount.name}`,
+          },
+        ],
+        forceReplace: true,
+      });
+
+      return updated;
+    });
+
+    return ok(res, result, "Expense updated successfully");
+  } catch (err: any) {
+    return fail(res, 500, "UPDATE_EXPENSE_ERROR", err?.message || "Failed to update expense");
+  }
+};
+
+export const deleteDirectExpense = async (req: Request, res: Response) => {
+  try {
+    const companyId = getCompanyId(req);
+    const expenseId = Number(req.params.id);
+
+    const existing = await prisma.payment.findFirst({
+      where: { id: expenseId, companyId, type: "EXPENSE" },
+    });
+    if (!existing) return fail(res, 404, "EXPENSE_NOT_FOUND", "Expense not found");
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete journal lines and entry
+      const jes = await tx.journalEntry.findMany({
+        where: { companyId, type: `PAYMENT:${expenseId}` },
+        select: { id: true },
+      });
+      if (jes.length > 0) {
+        const jeIds = jes.map((j) => j.id);
+        await tx.journalLine.deleteMany({ where: { entryId: { in: jeIds }, companyId } });
+        await tx.journalEntry.deleteMany({ where: { id: { in: jeIds }, companyId } });
+      }
+
+      // 2. Delete payment
+      await tx.payment.delete({ where: { id: expenseId } });
+    });
+
+    return ok(res, { id: expenseId }, "Expense deleted successfully");
+  } catch (err: any) {
+    console.error("Error deleting direct expense:", err);
+    return fail(res, 500, "DELETE_EXPENSE_ERROR", err?.message || "Failed to delete expense");
+  }
+};

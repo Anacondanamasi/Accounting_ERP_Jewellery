@@ -5,6 +5,7 @@ import {
   exportGstReturn,
   getGstr1,
   getGstr3b,
+  getPurchaseBillsFor2B,
   getHsnMaster,
   getTdsSummary,
   updateHsnMaster,
@@ -15,6 +16,7 @@ taxRoutes.use(authMiddleware);
 
 taxRoutes.get("/gst/gstr1", getGstr1);
 taxRoutes.get("/gst/gstr3b", getGstr3b);
+taxRoutes.get("/gst/purchases", getPurchaseBillsFor2B);
 taxRoutes.post("/gst/export", exportGstReturn);
 
 taxRoutes.get("/tds", getTdsSummary);
