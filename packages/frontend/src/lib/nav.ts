@@ -90,6 +90,13 @@ export const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
+    group: "FIXED ASSETS",
+    items: [
+      { label: "Asset Register", path: "/assets", icon: Building2 },
+      { label: "Statutory Reports", path: "/assets/reports", icon: BookMarked },
+    ],
+  },
+  {
     group: "INVENTORY",
     items: [
       { label: "Inventory Dashboard", path: "/inventory", icon: Gem },

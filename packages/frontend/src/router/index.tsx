@@ -87,6 +87,9 @@ import { ProductServiceListPage } from "@/pages/products/ProductServiceListPage"
 import { ProductServiceFormPage } from "@/pages/products/ProductServiceFormPage";
 import { ProductServiceDetailPage } from "@/pages/products/ProductServiceDetailPage";
 import { ProductImportPage } from "@/pages/products/ProductImportPage";
+import { FixedAssetListPage } from "@/pages/fixedAssets/FixedAssetListPage";
+import { AssetDetailPage } from "@/pages/fixedAssets/AssetDetailPage";
+import { FixedAssetReportsPage } from "@/pages/fixedAssets/FixedAssetReportsPage";
 
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const token = useAuthStore((state) => state.token);
@@ -230,6 +233,9 @@ export const router = createBrowserRouter([
       { path: "products/import", element: <ProductImportPage /> },
       { path: "products/:id", element: <ProductServiceDetailPage /> },
       { path: "products/:id/edit", element: <ProductServiceFormPage /> },
+      { path: "assets", element: <FixedAssetListPage /> },
+      { path: "assets/reports", element: <FixedAssetReportsPage /> },
+      { path: "assets/:id", element: <AssetDetailPage /> },
     ],
   },
 ]);

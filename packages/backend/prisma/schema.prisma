@@ -1290,3 +1290,249 @@ model DocumentSettlement {
   @@index([companyId, sourcePaymentId])
 }
 
+
+
+// ==========================================
+// FIXED ASSETS MODULE (Companies Act 2013 & Income Tax Act)
+// ==========================================
+
+model AssetCategory {
+  id                   Int          @id @default(autoincrement())
+  companyId            Int
+  name                 String       // e.g. "Plant & Machinery", "Furniture & Fixtures", "Computers & Servers"
+  code                 String?      // Category prefix e.g. "PLM", "FUR", "CMP"
+  description          String?
+  scheduleIIClass      String?      // Reference to Schedule II class of asset
+  usefulLifeYears      Float        // Default useful life in years as per Schedule II
+  residualPercentage   Float        @default(5.0) // Residual value % (standard 5% under Schedule II)
+  defaultMethod        String       @default("SLM") // SLM | WDV
+  taxBlockId           Int?         // Default Tax Block mapping
+
+  // Accounting mapping (GL Accounts)
+  assetAccountId       Int          // Balance Sheet: Asset Gross Block (e.g. Plant & Machinery)
+  accumulatedDepAccountId Int       // Balance Sheet: Accumulated Depreciation
+  depExpenseAccountId  Int          // P&L: Depreciation Expense
+  cwipAccountId        Int?         // Balance Sheet: Capital Work-in-Progress (optional)
+  gainLossAccountId    Int?         // P&L: Gain / Loss on Disposal
+
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  assets               FixedAsset[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model TaxBlock {
+  id                   Int               @id @default(autoincrement())
+  companyId            Int
+  name                 String            // e.g. "Plant & Machinery (General) - 15%", "Computers & Software - 40%"
+  assetClass           String            // BUILDINGS | FURNITURE_AND_FITTINGS | PLANT_AND_MACHINERY | INTANGIBLE_ASSETS | SHIPS
+  depreciationRate     Float             // Section 32 Appendix I rate (e.g. 15.0, 40.0, 10.0, 5.0)
+  effectiveFrom        DateTime          @default(now())
+  verifyWithCa         Boolean           @default(true)
+  description          String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  assets               FixedAsset[]
+  balances             TaxBlockBalance[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model TaxBlockBalance {
+  id                   Int               @id @default(autoincrement())
+  companyId            Int
+  taxBlockId           Int
+  financialYear        String            // e.g. "2024-2025"
+  openingWdv           Float             @default(0.0)
+  additionsMoreThan180Days Float          @default(0.0) // Additions put to use >= 180 days (Full rate)
+  additionsLessThan180Days Float          @default(0.0) // Additions put to use < 180 days (Half rate)
+  deductionsOrRealizations Float          @default(0.0) // Monies payable/salvage on sold/destroyed assets
+  depreciationAllowed  Float             @default(0.0) // Calculated tax depreciation
+  closingWdv           Float             @default(0.0) // Closing WDV carried forward
+  capitalGainOrLoss    Float             @default(0.0) // Short term capital gain/loss u/s 50 (if block negative or extinguished)
+  status               String            @default("OPEN") // OPEN | LOCKED
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  taxBlock             TaxBlock          @relation(fields: [taxBlockId], references: [id])
+
+  @@unique([companyId, taxBlockId, financialYear])
+  @@index([companyId, financialYear])
+}
+
+model FixedAsset {
+  id                   Int               @id @default(autoincrement())
+  companyId            Int
+  assetCode            String            // e.g. "FA-2024-001"
+  name                 String
+  description          String?
+  assetCategoryId      Int
+  taxBlockId           Int?
+
+  // Identification & Tracking
+  serialNo             String?
+  location             String?
+  department           String?
+  custodian            String?
+  barcodeOrTag         String?
+
+  // Dates
+  dateOfPurchase       DateTime
+  datePutToUse         DateTime          // Depreciation starts from date put to use
+  capitalizedAt        DateTime?         // Date capitalized from CWIP
+
+  // Financials - Books (Companies Act 2013)
+  originalCost         Float             // Total capitalized cost in books
+  salvageValue         Float             @default(0.0) // Expected residual value (typically 5%)
+  usefulLifeYears      Float             // Useful life in years
+  depreciationMethod   String            @default("SLM") // SLM | WDV
+  wdvRate              Float?            // WDV rate derived from useful life & salvage %: 1 - (s/c)^(1/n)
+  currentBookValue     Float             // Net Book Value (NBV)
+  accumulatedDep       Float             @default(0.0)
+  status               String            @default("ACTIVE") // CWIP | ACTIVE | IMPAIRED | DISPOSED | WRITTEN_OFF
+
+  // CWIP Tracking
+  isCwip               Boolean           @default(false)
+  cwipAccountId        Int?
+
+  // Source & GST
+  supplierBillId       Int?
+  vendorId             Int?
+  billInvoiceNo        String?
+  billDate             DateTime?
+  eligibleItcGst       Float             @default(0.0) // ITC claimed (excluded from asset cost)
+  blockedItcGst        Float             @default(0.0) // ITC blocked u/s 17(5) (capitalized into asset cost)
+
+  // Disposal details
+  isDisposed           Boolean           @default(false)
+  disposalDate         DateTime?
+  disposalAmount       Float?
+  disposalGstRate      Float?
+  disposalGstAmount    Float?
+  disposalInvoiceNo    String?
+  disposalGainLoss     Float?
+  disposalJournalId    Int?
+  disposalReason       String?           // SOLD | SCRAPPED | DESTROYED | DONATED
+  rule43ReversalAmount Float?            // Rule 43 60-month ITC reversal amount if sold within 5 years
+
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  createdBy            String?
+
+  category             AssetCategory     @relation(fields: [assetCategoryId], references: [id])
+  taxBlock             TaxBlock?         @relation(fields: [taxBlockId], references: [id])
+  costComponents       AssetCostComponent[]
+  depreciationLines    DepreciationRunLine[]
+  events               AssetEvent[]
+  verifications        AssetPhysicalVerification[]
+
+  @@unique([companyId, assetCode])
+  @@index([companyId, status])
+  @@index([companyId, assetCategoryId])
+}
+
+model AssetCostComponent {
+  id                   Int               @id @default(autoincrement())
+  fixedAssetId         Int
+  componentName        String            // e.g. "Base Machine", "Motor", "Installation Charges", "Freight"
+  cost                 Float
+  eligibleGst          Float             @default(0.0)
+  blockedGst           Float             @default(0.0)
+  capitalizedCost      Float
+  usefulLifeYears      Float?            // For component accounting under Ind AS 16 / AS 10
+  salvageValue         Float?            @default(0.0)
+  createdAt            DateTime          @default(now())
+
+  fixedAsset           FixedAsset        @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+
+  @@index([fixedAssetId])
+}
+
+model DepreciationRun {
+  id                   Int               @id @default(autoincrement())
+  companyId            Int
+  runNumber            String            // e.g. "DEPR-2024-04"
+  runDate              DateTime          @default(now())
+  periodStartDate      DateTime
+  periodEndDate        DateTime
+  financialYear        String            // e.g. "2024-2025"
+  frequency            String            @default("MONTHLY") // MONTHLY | QUARTERLY | YEARLY
+  status               String            @default("POSTED") // POSTED | REVERSED
+  totalDepreciation    Float
+  assetCount           Int
+  journalId            Int?              // FK to Journal entry created in General Ledger
+  reversedRunId        Int?
+  reversalJournalId    Int?
+  remarks              String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  createdBy            String?
+
+  lines                DepreciationRunLine[]
+
+  @@index([companyId, financialYear])
+  @@index([companyId, periodEndDate])
+}
+
+model DepreciationRunLine {
+  id                   Int               @id @default(autoincrement())
+  depreciationRunId    Int
+  fixedAssetId         Int
+  assetCode            String
+  assetName            String
+  openingBookValue     Float
+  depreciationAmount   Float
+  closingBookValue     Float
+  daysDepreciated      Int
+  status               String            @default("POSTED") // POSTED | EXCLUDED
+  remarks              String?
+
+  depreciationRun      DepreciationRun   @relation(fields: [depreciationRunId], references: [id], onDelete: Cascade)
+  fixedAsset           FixedAsset        @relation(fields: [fixedAssetId], references: [id])
+
+  @@index([depreciationRunId])
+  @@index([fixedAssetId])
+}
+
+model AssetEvent {
+  id                   Int               @id @default(autoincrement())
+  companyId            Int
+  fixedAssetId         Int
+  eventType            String            // ACQUISITION | CAPITALIZATION | DEPRECIATION | IMPROVEMENT | TRANSFER | REVALUATION | IMPAIRMENT | DISPOSAL | REVERSAL
+  eventDate            DateTime
+  amount               Float             @default(0.0)
+  remarks              String?
+  referenceType        String?           // BILL | EXPENSE | JOURNAL | DEPRECIATION_RUN | DISPOSAL
+  referenceId          Int?
+  createdAt            DateTime          @default(now())
+  createdBy            String?
+
+  fixedAsset           FixedAsset        @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+
+  @@index([fixedAssetId])
+  @@index([companyId, eventDate])
+}
+
+model AssetPhysicalVerification {
+  id                   Int               @id @default(autoincrement())
+  companyId            Int
+  fixedAssetId         Int
+  verificationDate     DateTime
+  verifiedBy           String
+  status               String            // FOUND_VERIFIED | FOUND_DAMAGED | MISSING | RELOCATED
+  locationObserved     String?
+  conditionScore       Int?              // 1 to 5
+  remarks              String?
+  createdAt            DateTime          @default(now())
+
+  fixedAsset           FixedAsset        @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+
+  @@index([fixedAssetId])
+  @@index([companyId, verificationDate])
+}
