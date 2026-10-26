@@ -209,7 +209,7 @@ export const AdjustmentFormPage = () => {
 
         <div className="flex justify-end gap-2">
           <button className="h-10 rounded-btn border border-border px-4 text-sm" onClick={() => navigate("/inventory/adjust")} type="button">Cancel</button>
-          <button className="h-10 rounded-btn bg-gold px-4 text-sm text-white disabled:opacity-50" disabled={createMutation.isPending} type="submit">{createMutation.isPending ? "Saving..." : "Save Draft"}</button>
+          <button className="h-10 rounded-btn bg-gold px-4 text-sm text-white disabled:opacity-50" disabled={createMutation.isPending} type="submit">{createMutation.isPending ? "Saving..." : "Save Adjustment"}`r`n            data-shortcut="save"</button>
         </div>
       </form>
     </div>
