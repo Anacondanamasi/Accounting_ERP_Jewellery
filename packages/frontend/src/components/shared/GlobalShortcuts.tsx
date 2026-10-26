@@ -1,139 +1,252 @@
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useShortcut } from "@/hooks/useShortcut";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAppStore } from "@/stores/appStore";
 
 export const GlobalShortcuts = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const tallyMode = useAppStore((state) => state.tallyMode);
+  const setShortcutsHelpOpen = useAppStore((state) => state.setShortcutsHelpOpen);
+  const setCommandPaletteOpen = useAppStore((state) => state.setCommandPaletteOpen);
 
-  // Soft Refresh (F5)
-  useShortcut({ key: "F5" }, (e) => {
-    e.preventDefault();
-    void qc.invalidateQueries();
-    toast.success("Data refreshed");
-  }, { ignoreInInputs: false });
+  const chordRef = useRef<{ prefix: string; timer: any } | null>(null);
+  const [activeChord, setActiveChord] = useState<string | null>(null);
 
-  // Dashboard
-  useShortcut({ key: "h", altKey: true }, () => navigate("/"), { preventDefault: true });
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement ||
+        activeEl?.getAttribute("contenteditable") === "true";
 
-  // Back (Alt + Left)
-  useShortcut({ key: "ArrowLeft", altKey: true }, () => {
-    // Check for unsaved changes (rudimentary check for dirty forms - assumes classes like .is-dirty)
-    if (document.querySelector('form[data-dirty="true"]')) {
-      if (!confirm("You have unsaved changes. Are you sure you want to go back?")) {
+      // 1. Cheat Sheet (? or Ctrl+/)
+      if (
+        (e.key === "?" && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey) ||
+        (e.key === "/" && (e.ctrlKey || e.metaKey))
+      ) {
+        e.preventDefault();
+        setShortcutsHelpOpen(true);
         return;
       }
-    }
-    navigate(-1);
-  });
 
-  // ESC: close modals or navigate back
-  useShortcut({ key: "Escape" }, () => {
-    // If any modal, dropdown, or command palette is open, do NOT navigate back.
-    // Let those components handle closing themselves.
-    const isModalOpen = document.querySelectorAll(
-      '.fixed.z-50, [role="dialog"], dialog[open], [data-radix-popper-content-wrapper]'
-    ).length > 0;
+      // 2. Command Palette (/ when not in input)
+      if (e.key === "/" && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+        return;
+      }
 
-    if (isModalOpen) {
-      // We don't go back. Modals handle their own ESC to close.
-      return;
-    }
-
-    // Only navigate back if we aren't on the root
-    if (window.location.pathname !== "/") {
-      if (document.querySelector('form[data-dirty="true"]')) {
-        if (!confirm("You have unsaved changes. Are you sure you want to go back?")) {
-          return;
+      // 3. Tally Function Keys (F4 - F9)
+      if (tallyMode && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        switch (e.key) {
+          case "F8": // Sales Invoice
+            e.preventDefault();
+            toast.info("Tally F8: New Sales Invoice");
+            navigate("/invoices/new");
+            return;
+          case "F9": // Purchase Bill
+            e.preventDefault();
+            toast.info("Tally F9: New Purchase Bill");
+            navigate("/bills/new");
+            return;
+          case "F7": // Journal Voucher
+            e.preventDefault();
+            toast.info("Tally F7: New Journal Entry");
+            navigate("/journal/new");
+            return;
+          case "F6": // Receipt Voucher
+            e.preventDefault();
+            toast.info("Tally F6: Receipt Voucher");
+            navigate("/advances/receipts");
+            return;
+          case "F5": // Payment Voucher
+            e.preventDefault();
+            toast.info("Tally F5: Payment Voucher");
+            navigate("/advances/payments");
+            return;
+          case "F4": // Contra / Bank Transfer
+            e.preventDefault();
+            toast.info("Tally F4: Contra / Bank Transfer");
+            navigate("/banking/transactions");
+            return;
         }
       }
-      navigate(-1);
-    }
-  });
 
-  // Export (Ctrl + Shift + E)
-  useShortcut({ key: "e", ctrlKey: true, shiftKey: true }, () => {
-    // Attempt to click any visible export button, or notify
-    const exportBtn = document.querySelector('button[title*="Export"], button[aria-label*="Export"]') as HTMLButtonElement;
-    if (exportBtn) {
-      exportBtn.click();
-    } else {
-      toast.info("No export available on this page.");
-    }
-  });
+      // 4. Data Soft Refresh (Alt+F5 or F5 if tallyMode is false)
+      if ((e.key === "F5" && !tallyMode) || (e.key === "F5" && e.altKey)) {
+        e.preventDefault();
+        void qc.invalidateQueries();
+        toast.success("Data refreshed");
+        return;
+      }
 
-  // Print (Ctrl + P)
-  useShortcut({ key: "p", ctrlKey: true }, (e) => {
-    const printBtn = document.querySelector('button[title*="Print"], button[aria-label*="Print"]') as HTMLButtonElement;
-    if (printBtn) {
-      e.preventDefault();
-      printBtn.click();
-    } else {
-      // Let browser default print happen if no custom print button
-    }
-  }, { preventDefault: false }); // Do not prevent default so browser print works if we don't handle it
+      // 5. Global Navigation Chords (G + key) & Creation Chords (C + key)
+      // Only when NOT inside an input field
+      if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const key = e.key.toLowerCase();
 
-  // Save (Ctrl + S)
-  useShortcut({ key: "s", ctrlKey: true }, (e) => {
-    const saveBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-    if (saveBtn) {
-      e.preventDefault();
-      saveBtn.click();
-    } else {
-      toast.info("No save action available here.");
-    }
-  }, { ignoreInInputs: false });
+        // If no active prefix chord
+        if (!chordRef.current) {
+          if (key === "g" || key === "c") {
+            e.preventDefault();
+            const prefix = key;
+            setActiveChord(prefix.toUpperCase() + "...");
+            const timer = setTimeout(() => {
+              chordRef.current = null;
+              setActiveChord(null);
+            }, 1000);
+            chordRef.current = { prefix, timer };
+            return;
+          }
+        } else {
+          // A chord is currently active!
+          e.preventDefault();
+          const { prefix, timer } = chordRef.current;
+          clearTimeout(timer);
+          chordRef.current = null;
+          setActiveChord(null);
 
-  // Submit (Ctrl + Enter)
-  useShortcut({ key: "Enter", ctrlKey: true }, (e) => {
-    const submitBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-    if (submitBtn) {
-      e.preventDefault();
-      submitBtn.click();
-    }
-  }, { ignoreInInputs: false }); // Needs to work even when inside an input!
+          // Handle G + ...
+          if (prefix === "g") {
+            switch (key) {
+              case "d":
+                navigate("/");
+                return;
+              case "s":
+                navigate("/invoices");
+                return;
+              case "b":
+                navigate("/bills");
+                return;
+              case "c":
+                navigate("/customers");
+                return;
+              case "v":
+                navigate("/suppliers");
+                return;
+              case "a":
+                navigate("/accounts");
+                return;
+              case "j":
+                navigate("/journal");
+                return;
+              case "r":
+                navigate("/reports");
+                return;
+              case "k":
+                navigate("/banking/accounts");
+                return;
+              case "i":
+                navigate("/inventory/items");
+                return;
+              case "t":
+                navigate("/tax/gst");
+                return;
+              case "e":
+                navigate("/expenses");
+                return;
+            }
+          }
 
-  // New Record (Ctrl + N)
-  useShortcut({ key: "n", ctrlKey: true }, (e) => {
-    // Try to find a link ending with /new or a button containing 'New'
-    const newBtn = document.querySelector('a[href$="/new"], button[title*="New"], button[aria-label*="New"], a[title*="New"]') as HTMLElement;
-    if (newBtn) {
-      e.preventDefault();
-      newBtn.click();
-    } else {
-      toast.info("Cannot create a new record here.");
-    }
-  });
+          // Handle C + ...
+          if (prefix === "c") {
+            switch (key) {
+              case "i":
+                navigate("/invoices/new");
+                return;
+              case "b":
+                navigate("/bills/new");
+                return;
+              case "c":
+                navigate("/customers/new");
+                return;
+              case "j":
+                navigate("/journal/new");
+                return;
+              case "e":
+                navigate("/expenses/new");
+                return;
+            }
+          }
+        }
+      }
 
-  // Edit (Ctrl + E)
-  useShortcut({ key: "e", ctrlKey: true }, (e) => {
-    const editBtn = document.querySelector('a[href$="/edit"], button[title*="Edit"], button[aria-label*="Edit"]') as HTMLElement;
-    if (editBtn) {
-      e.preventDefault();
-      editBtn.click();
-    }
-  });
+      // 6. Escape to dismiss modals / backdrop
+      if (e.key === "Escape") {
+        if (chordRef.current) {
+          clearTimeout(chordRef.current.timer);
+          chordRef.current = null;
+          setActiveChord(null);
+          return;
+        }
 
-  // Delete (Ctrl + Delete)
-  useShortcut({ key: "Delete", ctrlKey: true }, (e) => {
-    const delBtn = document.querySelector('button[title*="Delete"], button[aria-label*="Delete"], button[title*="Void"], button[aria-label*="Void"]') as HTMLElement;
-    if (delBtn) {
-      e.preventDefault();
-      delBtn.click();
-    }
-  });
+        const isModalOpen =
+          document.querySelectorAll(
+            '.fixed.z-50, [role="dialog"], dialog[open], [data-radix-popper-content-wrapper]'
+          ).length > 0;
 
-  // Search (Ctrl + F)
-  useShortcut({ key: "f", ctrlKey: true }, (e) => {
-    const searchInput = document.querySelector('input[type="search"], input[placeholder*="Search"]') as HTMLInputElement;
-    if (searchInput) {
-      e.preventDefault();
-      searchInput.focus();
-    } else {
-      // Allow default browser search if no app search
-    }
-  }, { preventDefault: false }); // Allow browser default if app search fails
+        if (!isModalOpen && window.location.pathname !== "/") {
+          if (document.querySelector('form[data-dirty="true"]')) {
+            if (!confirm("You have unsaved changes. Are you sure you want to go back?")) {
+              return;
+            }
+          }
+          navigate(-1);
+        }
+      }
 
-  return null;
+      // 7. Global Save (Ctrl+S or Cmd+S)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !e.shiftKey) {
+        // Find save button or submit button
+        const saveBtn = document.querySelector(
+          'button[data-shortcut="save"], button[type="submit"]'
+        ) as HTMLButtonElement;
+        if (saveBtn) {
+          e.preventDefault();
+          saveBtn.click();
+        }
+      }
+
+      // 8. Global Save & New (Ctrl+Enter or Cmd+Enter)
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.shiftKey) {
+        const saveNewBtn = document.querySelector(
+          'button[data-shortcut="save-new"]'
+        ) as HTMLButtonElement;
+        if (saveNewBtn) {
+          e.preventDefault();
+          saveNewBtn.click();
+        }
+      }
+
+      // 9. Global Save & Close (Shift+Ctrl+Enter or Shift+Cmd+Enter)
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && e.shiftKey) {
+        const saveCloseBtn = document.querySelector(
+          'button[data-shortcut="save-close"]'
+        ) as HTMLButtonElement;
+        if (saveCloseBtn) {
+          e.preventDefault();
+          saveCloseBtn.click();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [navigate, qc, tallyMode, setShortcutsHelpOpen, setCommandPaletteOpen]);
+
+  return (
+    <>
+      {/* Active chord indicator pill */}
+      {activeChord && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-gold bg-charcoal px-4 py-2 text-xs font-medium text-gold shadow-2xl animate-pulse">
+          <span className="font-mono font-bold text-white">{activeChord}</span>
+          <span className="text-slate-300">Press second key...</span>
+        </div>
+      )}
+    </>
+  );
 };

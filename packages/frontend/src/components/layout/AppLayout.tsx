@@ -7,6 +7,7 @@ import { CommandPalette } from "../shared/CommandPalette";
 import { GlobalShortcuts } from "../shared/GlobalShortcuts";
 import { GlobalTooltip } from "../shared/GlobalTooltip";
 import { WorkstationLockModal } from "../auth/WorkstationLockModal";
+import { KeyboardShortcutsModal } from "../shortcuts/KeyboardShortcutsModal";
 
 export const AppLayout = () => {
   const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
@@ -25,6 +26,7 @@ export const AppLayout = () => {
         </div>
       </main>
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <KeyboardShortcutsModal />
       <WorkstationLockModal />
     </div>
   );

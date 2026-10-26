@@ -1,4 +1,5 @@
-import { Bell, Search, LogOut, User, Building2, Lock } from "lucide-react";
+
+import { Bell, Search, LogOut, User, Building2, Lock, Keyboard } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
@@ -24,6 +25,7 @@ export const Header = () => {
   const breadcrumb = useMemo(() => labelFromPath(location.pathname), [location.pathname]);
   const [unread, setUnread] = useState(0);
   const setCommandPaletteOpen = useAppStore((state) => state.setCommandPaletteOpen);
+  const setShortcutsHelpOpen = useAppStore((state) => state.setShortcutsHelpOpen);
   const user = useAuthStore((state) => state.user);
   const companies = useAuthStore((state) => state.companies);
   const currentCompanyId = useAuthStore((state) => state.currentCompanyId);

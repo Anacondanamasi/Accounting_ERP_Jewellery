@@ -360,6 +360,8 @@ export const InvoiceFormPage = () => {
               loading={saveMutation.isPending}
               onClick={() => onSave()}
               type="button"
+              data-shortcut="save"
+              title="Save (Ctrl+S)"
             >
               <Save className="mr-1.5 h-3.5 w-3.5" />
               Save
@@ -370,6 +372,8 @@ export const InvoiceFormPage = () => {
               loading={saveAndNewMutation.isPending}
               onClick={() => onSaveAndNew()}
               type="button"
+              data-shortcut="save-new"
+              title="Save and New (Ctrl+Enter)"
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Save & New
@@ -380,6 +384,8 @@ export const InvoiceFormPage = () => {
               loading={saveAndCloseMutation.isPending}
               onClick={() => onSaveAndClose()}
               type="button"
+              data-shortcut="save-close"
+              title="Save and Close (Shift+Ctrl+Enter)"
             >
               <Check className="mr-1.5 h-4 w-4" />
               Save & Close
@@ -595,6 +601,14 @@ export const InvoiceFormPage = () => {
                     type="number"
                     step="0.01"
                     {...register(`lines.${index}.gstPct`, { valueAsNumber: true })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                        if (index === fields.length - 1) {
+                          e.preventDefault();
+                          append({ ...defaultLine });
+                        }
+                      }
+                    }}
                   />
                 </div>
 
@@ -602,14 +616,26 @@ export const InvoiceFormPage = () => {
                   {formatCurrency(totals.lineTotals[index]?.total ?? 0)}
                 </div>
 
-                <div className="md:col-span-1 flex justify-center">
+                <div className="md:col-span-1 flex items-center justify-center gap-1">
                   <button
-                    className="grid h-8 w-8 place-items-center rounded-full border border-border text-muted hover:border-ruby hover:bg-ruby hover:text-white transition-all"
+                    className="grid h-7 w-7 place-items-center rounded border border-border text-muted hover:border-gold hover:bg-gold-tint/20 hover:text-gold transition-all"
+                    onClick={() => {
+                      const cur = watch(`lines.${index}`);
+                      append({ ...cur });
+                      toast.info(`Duplicated row ${index + 1}`);
+                    }}
+                    type="button"
+                    title="Duplicate item (Ctrl+D)"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                  <button
+                    className="grid h-7 w-7 place-items-center rounded border border-border text-muted hover:border-ruby hover:bg-ruby hover:text-white transition-all"
                     onClick={() => remove(index)}
                     type="button"
                     title="Remove item"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3 w-3" />
                   </button>
                 </div>
 

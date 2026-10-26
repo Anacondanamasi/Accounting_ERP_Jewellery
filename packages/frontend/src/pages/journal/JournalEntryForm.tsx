@@ -1,6 +1,7 @@
+
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, Trash2, Save, Send, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Trash2, Save, Send, X, Check, Copy } from "lucide-react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
 import { useEffect } from "react";
@@ -77,6 +78,7 @@ const defaultLine = {
 export const JournalEntryForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const queryClient = useQueryClient();
   const editing = Boolean(id);
 
   const form = useForm<JournalInput>({
@@ -243,6 +245,27 @@ export const JournalEntryForm = () => {
 
   const onSave = form.handleSubmit(handleSave, onInvalid);
   const onPost = form.handleSubmit(handlePost, onInvalid);
+  const saveAndNewMutation = useMutation({
+    mutationFn: async (values: JournalInput) => {
+      const payload = transformToApi(values);
+      return journalService.create(payload);
+    },
+    onSuccess: () => {
+      toast.success("Journal posted! Ready for next entry.");
+      form.reset({
+        date: new Date().toISOString().slice(0, 10),
+        narration: "",
+        lines: [
+          { accountId: 0, partyName: "", debit: 0, credit: 0, narration: "" },
+          { accountId: 0, partyName: "", debit: 0, credit: 0, narration: "" },
+        ],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Unable to save journal");
+    },
+  });
 
   const handleDebitChange = (index: number, value: string) => {
     const val = parseFloat(value) || 0;

@@ -282,6 +282,8 @@ export const BillFormPage = () => {
               className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
               onClick={form.handleSubmit((v) => saveMutation.mutate(v), onInvalid)}
               type="button"
+              data-shortcut="save"
+              title="Save (Ctrl+S)"
             >
               <Save className="h-3.5 w-3.5" />
               Save
@@ -290,6 +292,8 @@ export const BillFormPage = () => {
               className="inline-flex h-10 items-center gap-1.5 rounded-btn border border-border px-4 text-sm font-medium hover:bg-slate-50 transition-colors"
               onClick={form.handleSubmit((v) => saveAndNewMutation.mutate(v), onInvalid)}
               type="button"
+              data-shortcut="save-new"
+              title="Save and New (Ctrl+Enter)"
             >
               <Plus className="h-3.5 w-3.5" />
               Save & New
@@ -299,6 +303,8 @@ export const BillFormPage = () => {
               className="inline-flex h-10 items-center gap-1.5 rounded-btn bg-gold px-5 text-sm font-bold text-white shadow-lg hover:bg-gold-dark transition-all disabled:opacity-50"
               onClick={form.handleSubmit((v) => saveAndCloseMutation.mutate(v), onInvalid)}
               type="button"
+              data-shortcut="save-close"
+              title="Save and Close (Shift+Ctrl+Enter)"
               disabled={isBusy}
             >
               <Check className="h-4 w-4" />
@@ -472,6 +478,14 @@ export const BillFormPage = () => {
                   placeholder="GST"
                   title="GST %"
                   {...form.register(`lines.${index}.gstPct`, { valueAsNumber: true })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                      if (index === fields.length - 1) {
+                        e.preventDefault();
+                        append({ ...defaultLine });
+                      }
+                    }
+                  }}
                 />
 
                 {/* Line Total */}
@@ -480,14 +494,28 @@ export const BillFormPage = () => {
                 </div>
 
                 {/* Delete */}
-                <button
-                  className="grid h-9 place-items-center rounded border border-ruby/30 text-ruby hover:bg-ruby/5 transition-colors md:col-span-1"
-                  onClick={() => remove(index)}
-                  type="button"
-                  title="Remove row"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="md:col-span-1 flex items-center justify-center gap-1">
+                  <button
+                    className="grid h-8 w-8 place-items-center rounded border border-border text-muted hover:border-gold hover:bg-gold-tint/20 hover:text-gold transition-all"
+                    onClick={() => {
+                      const cur = form.watch(`lines.${index}`);
+                      append({ ...cur });
+                      toast.info(`Duplicated row ${index + 1}`);
+                    }}
+                    type="button"
+                    title="Duplicate item (Ctrl+D)"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    className="grid h-8 w-8 place-items-center rounded border border-ruby/30 text-ruby hover:bg-ruby/5 transition-colors"
+                    onClick={() => remove(index)}
+                    type="button"
+                    title="Remove row"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
