@@ -1,28 +1,60 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowUpCircle, Save } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { TextArea } from "@/components/ui/TextArea";
+import { bankingService } from "@/services/bankingService";
 
 export const SpendMoneyPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     bankAccount: "",
     payee: "",
     reference: "",
     amount: "",
-    taxRate: "18",
+    taxRate: "0",
     description: "",
+  });
+
+  const { data: bankAccounts = [], isLoading: loadingAccounts } = useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: () => bankingService.listAccounts(),
   });
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
   const amount = parseFloat(form.amount) || 0;
   const tax = amount * (parseFloat(form.taxRate) / 100);
   const total = amount + tax;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.bankAccount) throw new Error("Please select a bank account");
+      if (!form.amount || parseFloat(form.amount) <= 0) throw new Error("Please enter a valid amount");
+      return bankingService.createTransaction(Number(form.bankAccount), {
+        date: form.date,
+        narration: form.description ? `${form.payee} - ${form.description}` : form.payee || "Spend Money",
+        reference: form.reference,
+        debit: total,
+        credit: 0,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Payment recorded successfully");
+      void queryClient.invalidateQueries({ queryKey: ["bank-accounts"] });
+      void queryClient.invalidateQueries({ queryKey: ["bank-transactions"] });
+      navigate("/banking/accounts");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || err.response?.data?.message || "Failed to record payment");
+    },
+  });
 
   return (
     <div className="space-y-4">
@@ -31,8 +63,16 @@ export const SpendMoneyPage = () => {
         subtitle="Record a payment made from your bank account"
         actions={
           <>
-            <Button variant="outline" onClick={() => navigate("/banking")} type="button">Cancel</Button>
-            <Button type="button">
+            <Button variant="outline" onClick={() => navigate("/banking/accounts")} type="button">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              loading={saveMutation.isPending}
+              data-shortcut="save"
+              title="Save Transaction (Ctrl+S)"
+              type="button"
+            >
               <Save className="mr-2 h-4 w-4" /> Save Transaction
             </Button>
           </>
@@ -46,7 +86,7 @@ export const SpendMoneyPage = () => {
         </div>
         <div>
           <p className="font-semibold text-ruby">Money Going Out</p>
-          <p className="text-sm text-muted">This transaction will reduce your bank balance</p>
+          <p className="text-sm text-muted">This transaction will reduce your bank balance immediately</p>
         </div>
       </div>
 
@@ -60,15 +100,29 @@ export const SpendMoneyPage = () => {
             className="h-10 w-full rounded border border-border bg-white px-3 text-sm focus:border-ruby focus:outline-none"
             value={form.bankAccount}
             onChange={(e) => set("bankAccount", e.target.value)}
+            disabled={loadingAccounts}
           >
             <option value="">Select bank account...</option>
-            <option value="hdfc-current">HDFC Current Account (••4521)</option>
-            <option value="sbi-savings">SBI Savings Account (••8873)</option>
-            <option value="axis-current">Axis Bank Current (••2290)</option>
+            {bankAccounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.bankName} - {acc.accountName} ({acc.accountNoMasked || "••" + String(acc.id)})
+              </option>
+            ))}
           </select>
         </div>
-        <Input label="Payee / Paid To" placeholder="Who did you pay?" value={form.payee} onChange={(e) => set("payee", e.target.value)} required />
-        <Input label="Reference" placeholder="Cheque no., transaction ID..." value={form.reference} onChange={(e) => set("reference", e.target.value)} />
+        <Input
+          label="Payee / Paid To"
+          placeholder="Who did you pay?"
+          value={form.payee}
+          onChange={(e) => set("payee", e.target.value)}
+          required
+        />
+        <Input
+          label="Reference"
+          placeholder="Cheque no., transaction ID..."
+          value={form.reference}
+          onChange={(e) => set("reference", e.target.value)}
+        />
         <Input
           label="Amount (₹)"
           type="number"
@@ -114,7 +168,9 @@ export const SpendMoneyPage = () => {
           </div>
           <div className="flex justify-between pt-2">
             <span className="text-lg font-bold text-red-300">Total Spent</span>
-            <span className="font-mono text-2xl font-bold text-red-300">₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+            <span className="font-mono text-2xl font-bold text-red-300">
+              ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </span>
           </div>
         </div>
       </div>
