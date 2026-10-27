@@ -18,7 +18,7 @@ import {
   verifySignedToken,
   REFRESH_TOKEN_TTL_SECONDS,
 } from "../../lib/security";
-import { consumeRateLimit } from "../../lib/rateLimiter";
+import { consumeRateLimit, resetRateLimit } from "../../lib/rateLimiter";
 import { verifyTotpCode } from "../../lib/totp";
 import { writeAuditLog } from "../../lib/audit";
 
@@ -365,6 +365,7 @@ export const login = async (req: Request, res: Response) => {
       WHERE id = $1`,
     user.id,
   );
+  resetRateLimit(`login:${getIp(req)}:${email}`);
 
   const memberships = await listMemberships(user.id);
   const activeMembership =
