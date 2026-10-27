@@ -527,8 +527,64 @@ model Item {
   invoiceItems  InvoiceItem[]
   billItems     BillItem[]
   adjustmentLines InventoryAdjustmentLine[]
+  codes         ItemCode[]
 
   @@unique([companyId, sku])
+}
+
+model ItemCode {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  itemId        Int
+  code          String
+  codeType      String    @default("INTERNAL_QR") // INTERNAL_QR, INTERNAL_128, EAN13, UPCA, EAN8, CODE128, GS1, MANUFACTURER, SUPPLIER, CUSTOM
+  packQty       Float     @default(1)
+  isPrimary     Boolean   @default(false)
+  status        String    @default("ACTIVE") // ACTIVE, REVOKED
+  revokedAt     DateTime?
+  revokedBy     String?
+  revokedReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String
+
+  item          Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, code])
+  @@index([companyId, itemId])
+  @@index([companyId, status])
+}
+
+model LabelTemplate {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String
+  type        String    // THERMAL_ROLL, A4_SHEET
+  widthMm     Float
+  heightMm    Float
+  columns     Int       @default(1)
+  rows        Int       @default(1)
+  marginMm    Float     @default(2)
+  isDefault   Boolean   @default(false)
+  layoutJson  String    // JSON config for fields
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId])
+}
+
+model LabelPrintJob {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  userId      String
+  templateId  Int?
+  totalLabels Int
+  itemCount   Int
+  status      String    @default("COMPLETED")
+  detailsJson String    // Snapshot of items and quantities printed
+  createdAt   DateTime  @default(now())
+
+  @@index([companyId, createdAt])
 }
 
 model StockLedger {

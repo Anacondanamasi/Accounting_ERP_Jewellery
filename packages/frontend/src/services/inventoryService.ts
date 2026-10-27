@@ -9,7 +9,23 @@ export interface TodayMetalRates {
   silver: number;
 }
 
+export interface ItemCodeRecord {
+  id: number;
+  companyId: number;
+  itemId: number;
+  code: string;
+  codeType: string;
+  packQty: number;
+  isPrimary: boolean;
+  status: "ACTIVE" | "REVOKED";
+  qrPayload?: string;
+  companyToken?: string;
+  revokedAt?: string;
+  revokedReason?: string;
+}
+
 export interface InventoryItem {
+  codes?: ItemCodeRecord[];
   id: number;
   sku: string;
   name: string;
@@ -128,6 +144,30 @@ export const inventoryService = {
     const response = await api.get("/items", { params });
     return response.data.data as InventoryItem[];
   },
+  async getItemCodes(id: number): Promise<ItemCodeRecord[]> {
+    const response = await api.get(`/items/${id}/codes`);
+    return response.data.data;
+  },
+  async addItemCode(id: number, payload: { code: string; codeType?: string; packQty?: number; isPrimary?: boolean }) {
+    const response = await api.post(`/items/${id}/codes`, payload);
+    return response.data.data;
+  },
+  async generatePrimaryCode(id: number, reason?: string) {
+    const response = await api.post(`/items/${id}/codes/regenerate`, { reason });
+    return response.data.data;
+  },
+  async revokeItemCode(id: number, codeId: number, reason?: string) {
+    const response = await api.delete(`/items/${id}/codes/${codeId}`, { data: { reason } });
+    return response.data.data;
+  },
+  async getItemQrSvg(id: number): Promise<{ code: string; codeType: string; payload: string; svg: string }> {
+    const response = await api.get(`/items/${id}/qr`);
+    return response.data.data;
+  },
+  async backfillItemCodes(): Promise<{ totalItems: number; alreadyHadCodes: number; codesGenerated: number }> {
+    const response = await api.post("/items/backfill-codes");
+    return response.data.data;
+  },
   async getItemById(id: number) {
     const response = await api.get(`/items/${id}`);
     return response.data.data as InventoryItem;
@@ -229,5 +269,13 @@ export const inventoryService = {
   async createJobWorkBill(id: number) {
     const response = await api.post(`/job-work/${id}/bill`);
     return response.data.data as { billNo: string; jwoNo: string; amount: number; supplierType: string };
+  },
+  async resolveScan(scanString: string) {
+    const response = await api.post("/items/resolve-scan", { scanString });
+    return response.data.data as {
+      item: InventoryItem;
+      codeRecord?: ItemCodeRecord;
+      packQty: number;
+    };
   },
 };

@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@jewelledger/shared": path.resolve(__dirname, "../shared/src"),
     },
     // Prefer TypeScript source over stale compiled JS files that may coexist in src/.
     extensions: [".ts", ".tsx", ".mjs", ".js", ".jsx", ".json"],

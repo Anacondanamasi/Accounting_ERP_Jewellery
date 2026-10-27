@@ -84,7 +84,9 @@ export const SearchableSelect = ({
         aria-expanded={open}
         aria-invalid={!!error}
       >
-        <span className={cn("truncate", !selectedLabel && "text-muted")}>{selectedLabel ?? placeholder}</span>
+        <span className={cn("truncate", !selectedLabel && !value && "text-muted")}>
+          {selectedLabel || (value ? String(value) : placeholder)}
+        </span>
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted transition-transform duration-200", open && "rotate-180")} />
       </button>
       {open ? (

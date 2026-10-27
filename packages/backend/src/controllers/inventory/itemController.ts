@@ -1,3 +1,4 @@
+import { generateInternalCode } from "@jewelledger/shared";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { created, fail, ok } from "../../lib/apiResponse";
@@ -37,12 +38,21 @@ export const listItems = async (req: Request, res: Response) => {
       companyId,
       ...(category ? { category: { contains: category } } : {}),
       ...(karat ? { karat } : {}),
-      ...(search ? {
-        OR: [
-          { sku: { contains: search } },
-          { name: { contains: search } },
-        ]
-      } : {}),
+      ...(search
+        ? {
+            OR: [
+              { sku: { contains: search } },
+              { name: { contains: search } },
+              { codes: { some: { code: { contains: search }, status: "ACTIVE" } } },
+            ],
+          }
+        : {}),
+    },
+    include: {
+      codes: {
+        where: { status: "ACTIVE" },
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "desc" }],
+      },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -55,6 +65,12 @@ export const getItemById = async (req: Request, res: Response) => {
   
   const row = await prisma.item.findFirst({
     where: { id: Number(req.params.id), companyId },
+    include: {
+      codes: {
+        where: { status: "ACTIVE" },
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "desc" }],
+      },
+    },
   });
   if (!row) return fail(res, 404, "ITEM_NOT_FOUND", "Item not found");
   return ok(res, row);
@@ -92,12 +108,27 @@ export const createItem = async (req: Request, res: Response) => {
     return fail(res, 409, "SKU_EXISTS", "SKU already exists");
   }
 
+  const actor = getActor(req);
   const row = await prisma.item.create({
     data: {
       ...parsed.data,
       companyId,
-      createdBy: getActor(req),
-    }
+      createdBy: actor,
+      codes: {
+        create: {
+          companyId,
+          code: generateInternalCode("HK"),
+          codeType: "INTERNAL_QR",
+          packQty: 1,
+          isPrimary: true,
+          status: "ACTIVE",
+          createdBy: actor,
+        },
+      },
+    },
+    include: {
+      codes: true,
+    },
   });
 
   return created(res, row, "Item created");

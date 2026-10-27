@@ -1,11 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { invoiceFormSchema, type InvoiceFormInput } from "@jewelledger/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Printer, Tag, Trash2, Save, Send, Copy, Download, CreditCard, Check, AlertCircle, Eye } from "lucide-react";
+import { Plus, Printer, Tag, Trash2, Save, Send, Copy, Download, CreditCard, Check, AlertCircle, Eye, Camera, QrCode, Barcode } from "lucide-react";
+import { useHardwareScanner } from "@/hooks/useHardwareScanner";
+import { ScanCameraModal } from "@/components/inventory/ScanCameraModal";
+import { playScanSuccessBeep, playScanIncrementBeep, playScanErrorBeep } from "@/utils/scanFeedback";
+import { buildLineFromItem } from "@/utils/lineBuilder";
 import { QuickCustomerModal } from "@/components/shared/QuickCustomerModal";
 import { RecordPaymentModal } from "@/pages/invoices/RecordPaymentModal";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -41,6 +46,65 @@ const defaultLine: InvoiceFormInput["lines"][number] = {
   huid: "",
 };
 
+const isLineFilled = (line: any): boolean => {
+  if (!line) return false;
+  const hasSku = typeof line.sku === "string" && line.sku.trim() !== "";
+  const hasDesc = typeof line.description === "string" && line.description.trim() !== "";
+  const hasGross = Number(line.grossWt) > 0;
+  const hasNet = Number(line.netWt) > 0;
+  const hasRate = Number(line.ratePerGram) > 0;
+  const hasMaking = Number(line.makingRate) > 0;
+  return Boolean(hasSku || hasDesc || hasGross || hasNet || hasRate || hasMaking);
+};
+
+const invoiceClientFormSchema = z.object({
+  invoiceDate: z.string().min(1, "Invoice date is required"),
+  dueDate: z.string().min(1, "Due date is required"),
+  customerId: z.coerce.number().min(1, "Customer is required"),
+  salespersonId: z.coerce.number().optional().nullable(),
+  placeOfSupply: z.string().min(1, "Place of supply is required"),
+  notes: z.string().optional().nullable(),
+  terms: z.string().optional().nullable(),
+  lines: z.array(
+    z.object({
+      sku: z.string().optional().nullable(),
+      description: z.string().optional().nullable(),
+      karat: z.enum(["24K", "22K", "18K", "14K", "SILVER", "PLATINUM"]).default("22K"),
+      grossWt: z.coerce.number().nonnegative().default(0),
+      netWt: z.coerce.number().nonnegative().default(0),
+      stoneWt: z.coerce.number().nonnegative().default(0),
+      makingType: z.enum(["PER_GRAM", "FLAT", "PERCENT", "FIXED"]).default("PER_GRAM"),
+      makingRate: z.coerce.number().nonnegative().default(0),
+      ratePerGram: z.coerce.number().nonnegative().default(0),
+      discountPct: z.coerce.number().min(0).max(100).default(0),
+      gstPct: z.coerce.number().min(0).max(28).default(3),
+      hsnCode: z.string().default("7113"),
+      huid: z.string().optional().nullable(),
+    })
+  ).superRefine((lines, ctx) => {
+    const filledLines = lines.filter(isLineFilled);
+    if (filledLines.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At least one line item is required",
+        path: [0, "description"],
+      });
+      return;
+    }
+    lines.forEach((line, index) => {
+      if (isLineFilled(line)) {
+        if (!line.description || !line.description.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Description is required",
+            path: [index, "description"],
+          });
+        }
+      }
+    });
+  }),
+});
+
 export const InvoiceFormPage = () => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
@@ -48,8 +112,6 @@ export const InvoiceFormPage = () => {
   const { id } = useParams();
   const editing = Boolean(id);
   const [rates, setRates] = useState<any>(null);
-  // Track which line has an active P&S product selected (for UI highlight)
-  const [lineProductMap, setLineProductMap] = useState<Record<number, string>>({});
   
   const queryClient = useQueryClient();
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
@@ -62,10 +124,11 @@ export const InvoiceFormPage = () => {
     setValue,
     clearErrors,
     watch,
+    getValues,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<InvoiceFormInput>({
-    resolver: zodResolver(invoiceFormSchema),
+    resolver: zodResolver(invoiceClientFormSchema),
     mode: "onChange",
     defaultValues: {
       invoiceDate: new Date().toISOString().slice(0, 10),
@@ -90,6 +153,21 @@ export const InvoiceFormPage = () => {
   });
   const totals = useInvoiceCalc(lineValues || []);
 
+  // ── QBO-Style Auto Add Row ──────────────────────────────────────────────
+  // As soon as the last row is filled in (SKU, description, weight, or rate),
+  // automatically append a clean new row so there is always a blank row ready.
+  useEffect(() => {
+    if (!lineValues || lineValues.length === 0) {
+      append({ ...defaultLine });
+      return;
+    }
+    const lastIndex = lineValues.length - 1;
+    const lastLine = lineValues[lastIndex];
+    if (isLineFilled(lastLine)) {
+      append({ ...defaultLine });
+    }
+  }, [lineValues, append]);
+
   const { data: customers = [] } = useQuery({
     queryKey: ["customers-list"],
     queryFn: () => customerService.list(),
@@ -104,6 +182,86 @@ export const InvoiceFormPage = () => {
   const { productOptions, buildAutofill, searchProducts } = useProductServiceLookup("sales");
 
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [cameraScanOpen, setCameraScanOpen] = useState(false);
+  const [flashingRowIndex, setFlashingRowIndex] = useState<number | null>(null);
+
+  const handleScanCode = async (scannedCode: string) => {
+    const raw = scannedCode.trim();
+    if (!raw) return;
+
+    try {
+      const res = await inventoryService.resolveScan(raw);
+      const { item, packQty = 1 } = res;
+
+      const currentLines = (getValues("lines") || []) as any[];
+      const existingIdx = currentLines.findIndex(
+        (l: any) => l.sku && String(l.sku).toUpperCase() === String(item.sku).toUpperCase()
+      );
+
+      if (existingIdx >= 0) {
+        // Line already exists: increment quantity / weight
+        const cur = currentLines[existingIdx];
+        const baseGross = Number(item.grossWt) || 1;
+        const baseNet = Number(item.netWt) || 1;
+
+        const nextNet = Number((Number(cur.netWt || 0) + baseNet * packQty).toFixed(3));
+        const nextGross = Number((Number(cur.grossWt || 0) + baseGross * packQty).toFixed(3));
+
+        setValue(`lines.${existingIdx}.netWt`, nextNet, { shouldValidate: true });
+        setValue(`lines.${existingIdx}.grossWt`, nextGross, { shouldValidate: true });
+
+        playScanIncrementBeep();
+        setFlashingRowIndex(existingIdx);
+        setTimeout(() => setFlashingRowIndex(null), 1200);
+
+        toast.success(`Incremented "${item.name}" (Net: ${nextNet}g)`, {
+          duration: 2000,
+        });
+      } else {
+        // Line does not exist: build line item
+        const newLine = buildLineFromItem(item, {
+          metalRates: rates,
+          defaultGstPct: 3,
+        });
+
+        const lastIdx = currentLines.length - 1;
+        const lastLine = currentLines[lastIdx];
+        const isLastEmpty = lastIdx >= 0 && !lastLine?.sku && (!lastLine?.grossWt || Number(lastLine?.grossWt) === 0);
+
+        if (isLastEmpty) {
+          setValue(`lines.${lastIdx}`, newLine, { shouldValidate: true });
+          setFlashingRowIndex(lastIdx);
+        } else {
+          append(newLine);
+          setFlashingRowIndex(currentLines.length);
+        }
+
+        playScanSuccessBeep();
+        setTimeout(() => setFlashingRowIndex(null), 1200);
+        toast.success(`Added "${item.name}" to invoice`, { duration: 2000 });
+      }
+    } catch (err: any) {
+      playScanErrorBeep();
+      const code = err.response?.data?.error?.code;
+      const message = err.response?.data?.error?.message;
+
+      if (code === "CROSS_COMPANY_SCAN") {
+        toast.error("Cross-Company Security Notice: This barcode belongs to a different company or organization.", {
+          duration: 5000,
+        });
+      } else {
+        toast.error(message || `Item not found for code: "${raw}"`, {
+          duration: 3000,
+        });
+      }
+    }
+  };
+
+  useHardwareScanner({
+    onScan: handleScanCode,
+    enabled: true,
+    onToggleScanMode: () => setCameraScanOpen((prev) => !prev),
+  });
 
   const { data: nextNo } = useQuery({
     queryKey: ["invoice-next-number"],
@@ -126,11 +284,48 @@ export const InvoiceFormPage = () => {
     meta: c.gstin ? `GST: ${c.gstin}` : c.mobile,
   }));
 
-  const itemOptions = items.map((i: any) => ({
-    value: i.sku,
-    label: `${i.sku} - ${i.name}`,
-    meta: `${i.karat} | ${i.netWt}g`,
-  }));
+  // Unified list of jewellery inventory items and Products & Services
+  const combinedItemOptions = useMemo(() => {
+    const invMapped = (items || []).map((i: any) => ({
+      value: String(i.sku),
+      label: `${i.sku} – ${i.name}`,
+      meta: `💍 ${i.karat || "22K"} | ${i.netWt || 0}g`,
+      payload: { type: "INVENTORY", item: i },
+    }));
+
+    const psMapped = (productOptions || []).map((p: any) => ({
+      value: String(p.payload?.code || p.value),
+      label: p.label,
+      meta: `📦 ${p.meta}`,
+      payload: { type: "PRODUCT_SERVICE", item: p.payload },
+    }));
+
+    return [...invMapped, ...psMapped];
+  }, [items, productOptions]);
+
+  const loadCombinedItemOptions = async (query: string) => {
+    const trimmed = query.trim().toLowerCase();
+    const [invItems, psResults] = await Promise.all([
+      inventoryService.listItems({ search: trimmed }).catch(() => []),
+      searchProducts ? searchProducts(trimmed).catch(() => []) : Promise.resolve([]),
+    ]);
+
+    const invMapped = (invItems || []).map((i: any) => ({
+      value: String(i.sku),
+      label: `${i.sku} – ${i.name}`,
+      meta: `💍 ${i.karat || "22K"} | ${i.netWt || 0}g`,
+      payload: { type: "INVENTORY", item: i },
+    }));
+
+    const psMapped = (psResults || []).map((p: any) => ({
+      value: String(p.payload?.code || p.value),
+      label: p.label,
+      meta: `📦 ${p.meta}`,
+      payload: { type: "PRODUCT_SERVICE", item: p.payload },
+    }));
+
+    return [...invMapped, ...psMapped];
+  };
 
   const saveAndCloseMutation = useMutation({
     mutationFn: async (payload: InvoiceFormInput) =>
@@ -212,20 +407,6 @@ export const InvoiceFormPage = () => {
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  const handleDownloadPdf = async () => {
-    if (!id) return;
-    setDownloadingPdf(true);
-    try {
-      await downloadInvoicePdf(Number(id), existing?.invoiceNo);
-    } finally {
-      setDownloadingPdf(false);
-    }
-  };
-
-  const handlePrintPdf = () => {
-    if (!id) return;
-    window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
-  };
 
   useEffect(() => {
     if (!existing || !editing) return;
@@ -262,47 +443,74 @@ export const InvoiceFormPage = () => {
     });
   }, [editing, existing, reset]);
 
-  const onSelectSKU = (index: number, sku: string, item?: any) => {
-    const selectedItem = item || items.find((i: any) => i.sku === sku);
-    if (selectedItem) {
-      const line = watch(`lines.${index}`);
+  const onSelectUnifiedItem = (index: number, val: string, option?: any) => {
+    const payload = option?.payload;
+    const line = watch(`lines.${index}`);
+
+    if (payload?.type === "INVENTORY") {
+      const selectedItem = payload.item;
       setValue(`lines.${index}`, {
         ...line,
         sku: String(selectedItem.sku),
         description: selectedItem.name,
-        karat: selectedItem.karat,
-        grossWt: Number(selectedItem.grossWt),
-        netWt: Number(selectedItem.netWt),
-        stoneWt: Number(selectedItem.stoneWt),
-        makingType: selectedItem.makingType,
-        makingRate: Number(selectedItem.makingRate),
-        ratePerGram: rates ? (selectedItem.karat === "22K" ? rates.karat22 : rates.karat18) : 0,
-      });
+        karat: selectedItem.karat || "22K",
+        grossWt: Number(selectedItem.grossWt) || 0,
+        netWt: Number(selectedItem.netWt) || 0,
+        stoneWt: Number(selectedItem.stoneWt) || 0,
+        makingType: selectedItem.makingType || "PER_GRAM",
+        makingRate: Number(selectedItem.makingRate) || 0,
+        ratePerGram: rates ? (selectedItem.karat === "22K" ? rates.karat22 : rates.karat18) : (line.ratePerGram || 0),
+      }, { shouldValidate: true });
+      toast.success(`Selected jewellery: "${selectedItem.name}"`, { duration: 1500 });
+      return;
+    }
+
+    if (payload?.type === "PRODUCT_SERVICE") {
+      const p = payload.item;
+      const autofill = buildAutofill(p);
+      setValue(`lines.${index}`, {
+        ...line,
+        sku: String(p.code || val || "ITEM"),
+        description: autofill.description,
+        gstPct: autofill.gstPct,
+        hsnCode: autofill.hsnCode || "7113",
+        ...(p.type === "SERVICE" || line.ratePerGram === 0
+          ? { ratePerGram: autofill.ratePerGram }
+          : {}),
+      }, { shouldValidate: true });
+      toast.success(`Selected: "${autofill._productName}"`, { duration: 1500 });
+      return;
+    }
+
+    const foundItem = items.find((i: any) => String(i.sku) === String(val));
+    if (foundItem) {
+      setValue(`lines.${index}`, {
+        ...line,
+        sku: String(foundItem.sku),
+        description: foundItem.name,
+        karat: foundItem.karat || "22K",
+        grossWt: Number(foundItem.grossWt) || 0,
+        netWt: Number(foundItem.netWt) || 0,
+        stoneWt: Number(foundItem.stoneWt) || 0,
+        makingType: foundItem.makingType || "PER_GRAM",
+        makingRate: Number(foundItem.makingRate) || 0,
+        ratePerGram: rates ? (foundItem.karat === "22K" ? rates.karat22 : rates.karat18) : (line.ratePerGram || 0),
+      }, { shouldValidate: true });
+    } else {
+      setValue(`lines.${index}.sku`, String(val), { shouldValidate: true });
     }
   };
 
-  /**
-   * Auto-fill a line item from the Products & Services master.
-   * Populates: description, gstPct (from salesTaxRate), ratePerGram (as reference price).
-   * The jewellery-specific fields (weight, karat, making) are left for manual entry.
-   */
-  const onSelectProductService = (index: number, productId: string, payload: any) => {
-    if (!payload) return;
-    const autofill = buildAutofill(payload);
+  const onAddNewCustomItem = (index: number, customText: string) => {
+    const text = customText.trim();
+    if (!text) return;
     const line = watch(`lines.${index}`);
     setValue(`lines.${index}`, {
       ...line,
-      description: autofill.description,
-      gstPct: autofill.gstPct,
-      hsnCode: autofill.hsnCode || "7113",
-      // Only set ratePerGram if this is a service item (no weight) or user hasn't set it
-      ...(payload.type === "SERVICE" || line.ratePerGram === 0
-        ? { ratePerGram: autofill.ratePerGram }
-        : {}),
+      sku: text.toUpperCase().replace(/\s+/g, "-"),
+      description: text,
     }, { shouldValidate: true });
-    // Track which P&S item is selected for this line (store ID string for SearchableSelect value)
-    setLineProductMap((prev) => ({ ...prev, [index]: String(payload.id) }));
-    toast.success(`Auto-filled from "${autofill._productName}"`, { duration: 1500 });
+    toast.success(`Added custom item "${text}"`, { duration: 1500 });
   };
 
   const onInvalid = (formErrors: any) => {
@@ -320,16 +528,90 @@ export const InvoiceFormPage = () => {
     }
   };
 
+  const preparePayload = (values: any): InvoiceFormInput => {
+    const filledLines = (values.lines || []).filter(isLineFilled).map((l: any) => ({
+      ...l,
+      sku: l.sku || null,
+      description: l.description || "",
+      karat: l.karat || "22K",
+      grossWt: Number(l.grossWt) || 0,
+      netWt: Number(l.netWt) || 0,
+      stoneWt: Number(l.stoneWt) || 0,
+      makingType: l.makingType || "PER_GRAM",
+      makingRate: Number(l.makingRate) || 0,
+      ratePerGram: Number(l.ratePerGram) || 0,
+      discountPct: Number(l.discountPct) || 0,
+      gstPct: Number(l.gstPct) || 3,
+      hsnCode: l.hsnCode || "7113",
+      huid: l.huid || null,
+    }));
+
+    return {
+      invoiceDate: values.invoiceDate,
+      dueDate: values.dueDate,
+      customerId: Number(values.customerId),
+      salespersonId: values.salespersonId ? Number(values.salespersonId) : null,
+      placeOfSupply: values.placeOfSupply || "Gujarat",
+      notes: values.notes || "",
+      terms: values.terms || "",
+      lines: filledLines.length > 0 ? filledLines : values.lines,
+    };
+  };
+
   const onSaveAndClose = handleSubmit(async (values) => {
-    await saveAndCloseMutation.mutateAsync(values);
+    const payload = preparePayload(values);
+    await saveAndCloseMutation.mutateAsync(payload);
   }, onInvalid);
 
   const onSave = handleSubmit(async (values) => {
-    await saveMutation.mutateAsync(values);
+    const payload = preparePayload(values);
+    await saveMutation.mutateAsync(payload);
   }, onInvalid);
 
   const onSaveAndNew = handleSubmit(async (values) => {
-    await saveAndNewMutation.mutateAsync(values);
+    const payload = preparePayload(values);
+    await saveAndNewMutation.mutateAsync(payload);
+  }, onInvalid);
+
+  const handleDownloadPdf = handleSubmit(async (values) => {
+    setDownloadingPdf(true);
+    try {
+      const payload = preparePayload(values);
+      let targetId = id ? Number(id) : null;
+      let targetNo = existing?.invoiceNo;
+
+      if (!targetId) {
+        const created = await saveMutation.mutateAsync(payload);
+        if (created?.id) {
+          targetId = created.id;
+          targetNo = created.invoiceNo;
+        }
+      } else {
+        await saveMutation.mutateAsync(payload);
+      }
+      if (targetId) {
+        await downloadInvoicePdf(targetId, targetNo);
+      }
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }, onInvalid);
+
+  const handlePrintPdf = handleSubmit(async (values) => {
+    const payload = preparePayload(values);
+    let targetId = id ? Number(id) : null;
+
+    if (!targetId) {
+      const created = await saveMutation.mutateAsync(payload);
+      if (created?.id) {
+        targetId = created.id;
+      }
+    } else {
+      await saveMutation.mutateAsync(payload);
+    }
+    if (targetId) {
+      window.open(`/invoices/${targetId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+    }
   }, onInvalid);
 
   const busy =
@@ -363,6 +645,31 @@ export const InvoiceFormPage = () => {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handlePrintPdf}
+              type="button"
+              title="Print Invoice"
+              className="gap-1.5 border-border hover:border-gold hover:text-gold"
+            >
+              <Printer className="h-4 w-4 text-muted" />
+              Print
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleDownloadPdf}
+              loading={downloadingPdf}
+              type="button"
+              title="Download PDF"
+              className="gap-1.5 border-border hover:border-gold hover:text-gold"
+            >
+              <Download className={`h-4 w-4 text-muted ${downloadingPdf ? "animate-bounce" : ""}`} />
+              PDF
+            </Button>
+
+            <div className="h-6 w-px bg-border mx-1" />
+
             <Button
               variant="outline"
               loading={saveMutation.isPending}
@@ -466,14 +773,28 @@ export const InvoiceFormPage = () => {
         </div>
 
         <div className="rounded-card border-t-2 border-t-gold bg-card p-6 shadow-card">
-          <div className="mb-6 flex items-center justify-between px-2">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 px-2">
             <div>
               <h2 className="font-display text-2xl font-semibold text-charcoal">Line Items</h2>
-              <p className="text-xs text-muted">Add products or services to this invoice</p>
+              <p className="text-xs text-muted">Add products or services to this invoice, or scan barcode / QR tags</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => append({ ...defaultLine })} type="button">
-              <Plus className="mr-2 h-4 w-4" /> Add Row
-            </Button>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCameraScanOpen(true)}
+                type="button"
+                className="gap-1.5 border-gold/40 bg-gold/5 text-gold hover:bg-gold/15"
+                title="Scan with Camera (Ctrl+Shift+B)"
+              >
+                <Camera className="h-4 w-4" />
+                Scan Barcode / QR
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => append({ ...defaultLine })} type="button">
+                <Plus className="mr-1.5 h-4 w-4" /> Add Row
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -491,56 +812,34 @@ export const InvoiceFormPage = () => {
             </div>
 
             {fields.map((field, index) => (
-              <div key={field.id} className="group grid gap-3 rounded-lg border border-border p-3 md:grid-cols-12 items-start transition-colors hover:border-gold/30 hover:bg-gold-tint/10">
-                <div className="md:col-span-2 space-y-2">
-                  <input type="hidden" {...register(`lines.${index}.sku`)} />
+              <div
+                key={field.id}
+                className={`group grid gap-3 rounded-lg border p-3 md:grid-cols-12 items-start transition-all duration-300 ${
+                  flashingRowIndex === index
+                    ? "border-gold bg-gold/15 ring-2 ring-gold/40 shadow-md"
+                    : "border-border hover:border-gold/30 hover:bg-gold-tint/10"
+                }`}
+              >
+                <div className="md:col-span-2 space-y-1.5">
                   <input type="hidden" {...register(`lines.${index}.stoneWt`, { valueAsNumber: true })} />
                   <input type="hidden" {...register(`lines.${index}.makingType`)} />
                   <input type="hidden" {...register(`lines.${index}.hsnCode`)} />
                   <input type="hidden" {...register(`lines.${index}.huid`)} />
                   
-                  {/* Jewellery SKU picker (existing inventory items) */}
+                  {/* Single Unified Product / SKU Picker */}
                   <SearchableSelect
-                    loadOptions={async (query) => {
-                      const data = await inventoryService.listItems({ search: query });
-                      return data.map((i: any) => ({
-                        value: String(i.sku),
-                        label: `${i.sku} - ${i.name}`,
-                        meta: `${i.karat} | ${i.netWt}g`,
-                        payload: i,
-                      }));
-                    }}
-                    onChange={(val, option) => {
-                      setValue(`lines.${index}.sku`, String(val), { shouldValidate: true });
-                      onSelectSKU(index, String(val), option.payload);
-                    }}
-                    options={itemOptions.map(o => ({ ...o, value: String(o.value) }))}
-                    placeholder="Search SKU..."
+                    loadOptions={loadCombinedItemOptions}
+                    options={combinedItemOptions}
+                    placeholder="Search SKU or Product/Service..."
                     value={String(watch(`lines.${index}.sku`) || "")}
+                    onChange={(val, option) => onSelectUnifiedItem(index, String(val), option)}
+                    onAddNew={(customText) => onAddNewCustomItem(index, customText)}
+                    addNewLabel="Use custom item"
                     error={errors.lines?.[index]?.sku?.message}
                   />
 
-                  {/* Products & Services master picker — for description/price/tax auto-fill */}
-                  <div className="relative">
-                    <SearchableSelect
-                      loadOptions={searchProducts}
-                      onChange={(val, option) => {
-                        onSelectProductService(index, String(val), option?.payload);
-                      }}
-                      options={productOptions}
-                      placeholder="📦 Pick product/service..."
-                      value={lineProductMap[index] || ""}
-                    />
-                    {lineProductMap[index] && (
-                      <div className="mt-0.5 flex items-center gap-1 text-[9px] text-gold font-semibold uppercase tracking-wide">
-                        <Tag className="h-2.5 w-2.5" />
-                        {productOptions.find((o) => o.value === lineProductMap[index])?.label || "Selected"}
-                      </div>
-                    )}
-                  </div>
-
                   <input
-                    className="w-full bg-transparent text-[10px] text-muted focus:outline-none"
+                    className="w-full bg-transparent text-[11px] text-muted focus:text-charcoal focus:outline-none border-b border-transparent focus:border-gold transition-colors px-1"
                     placeholder="Short description..."
                     {...register(`lines.${index}.description`)}
                   />
@@ -708,6 +1007,69 @@ export const InvoiceFormPage = () => {
             </div>
           </div>
         </div>
+
+        {/* ── Form Bottom Actions (Print, PDF, Save) ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-border bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handlePrintPdf}
+              type="button"
+              title="Print Invoice"
+              className="gap-1.5 border-border hover:border-gold hover:text-gold"
+            >
+              <Printer className="h-4 w-4 text-muted" />
+              Print
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleDownloadPdf}
+              loading={downloadingPdf}
+              type="button"
+              title="Download PDF"
+              className="gap-1.5 border-border hover:border-gold hover:text-gold"
+            >
+              <Download className={`h-4 w-4 text-muted ${downloadingPdf ? "animate-bounce" : ""}`} />
+              PDF
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              loading={saveMutation.isPending}
+              onClick={() => onSave()}
+              type="button"
+              title="Save (Ctrl+S)"
+            >
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+              Save
+            </Button>
+
+            <Button
+              variant="outline"
+              loading={saveAndNewMutation.isPending}
+              onClick={() => onSaveAndNew()}
+              type="button"
+              title="Save and New (Ctrl+Enter)"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Save & New
+            </Button>
+
+            <Button
+              className="bg-gold hover:bg-gold-light text-white font-semibold shadow-sm"
+              loading={saveAndCloseMutation.isPending}
+              onClick={() => onSaveAndClose()}
+              type="button"
+              title="Save and Close (Shift+Ctrl+Enter)"
+            >
+              <Check className="mr-1.5 h-4 w-4" />
+              Save & Close
+            </Button>
+          </div>
+        </div>
       </form>
 
       {/* Payment History if payments exist */}
@@ -788,6 +1150,13 @@ export const InvoiceFormPage = () => {
           }}
         />
       )}
+
+      {/* Camera Barcode / QR Scanner Modal */}
+      <ScanCameraModal
+        open={cameraScanOpen}
+        onClose={() => setCameraScanOpen(false)}
+        onScan={handleScanCode}
+      />
     </div>
   );
 };
