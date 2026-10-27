@@ -211,20 +211,22 @@ export interface FilingRecord {
   gstr3bDate?: string;
 }
 
-export const readFilingStatus = (periodKey: string): FilingRecord => {
+const getGstStorageKey = (companyId?: string | null) => `jewel_gst_filings:${companyId || "default"}`;
+
+export const readFilingStatus = (periodKey: string, companyId?: string | null): FilingRecord => {
   try {
-    const all = JSON.parse(localStorage.getItem("jewel_gst_filings") || "{}");
+    const all = JSON.parse(localStorage.getItem(getGstStorageKey(companyId)) || "{}");
     return all[periodKey] || {};
   } catch {
     return {};
   }
 };
 
-export const saveFilingStatus = (periodKey: string, update: Partial<FilingRecord>) => {
+export const saveFilingStatus = (periodKey: string, update: Partial<FilingRecord>, companyId?: string | null) => {
   try {
-    const all = JSON.parse(localStorage.getItem("jewel_gst_filings") || "{}");
+    const all = JSON.parse(localStorage.getItem(getGstStorageKey(companyId)) || "{}");
     all[periodKey] = { ...all[periodKey], ...update };
-    localStorage.setItem("jewel_gst_filings", JSON.stringify(all));
+    localStorage.setItem(getGstStorageKey(companyId), JSON.stringify(all));
   } catch {}
 };
 

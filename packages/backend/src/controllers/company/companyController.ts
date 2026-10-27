@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+﻿import type { Request, Response } from "express";
 import crypto from "crypto";
 import {
   createCompanySchema,
@@ -15,6 +15,7 @@ import {
   createSignedToken,
   hashPassword,
   normalizeEmail,
+  signAccessToken,
   verifyAccessToken,
   verifySignedToken,
 } from "../../lib/security";
@@ -170,11 +171,19 @@ export const createCompany = async (req: Request, res: Response) => {
       newValues: parsed.data,
     });
 
+    const accessToken = signAccessToken({
+      sub: userId,
+      role: "owner",
+      companyId,
+      legacyCompanyId: legacyCompany.id,
+    });
+
     return created(res, {
       id: companyId,
       name: parsed.data.name,
       status: "trial",
       legacyCompanyId: legacyCompany.id,
+      accessToken,
       membership: {
         userId,
         role: "owner",
@@ -255,7 +264,24 @@ export const switchCompany = async (req: Request, res: Response) => {
     userId,
   );
 
-  return ok(res, { activeCompanyId: targetCompanyId }, "Switched organisation successfully.");
+  const compRows = (await prisma.$queryRawUnsafe(
+    "SELECT legacy_company_id FROM companies WHERE id = $1 LIMIT 1",
+    targetCompanyId,
+  )) as Array<{ legacy_company_id: number | null }>;
+  const legacyCompanyId = compRows[0]?.legacy_company_id ?? null;
+
+  const accessToken = signAccessToken({
+    sub: userId,
+    role: membership.role_name,
+    companyId: targetCompanyId,
+    legacyCompanyId,
+  });
+
+  return ok(
+    res,
+    { activeCompanyId: targetCompanyId, legacyCompanyId, accessToken },
+    "Switched organisation successfully.",
+  );
 };
 
 export const getCompanyById = async (req: Request, res: Response) => {

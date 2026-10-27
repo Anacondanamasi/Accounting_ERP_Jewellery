@@ -647,7 +647,7 @@ export const getInvoicePdf = async (req: Request, res: Response) => {
   });
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${invoice.invoiceNo}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${invoice.invoiceNo}.pdf"`);
   return res.status(200).send(pdfBuffer);
 };
 

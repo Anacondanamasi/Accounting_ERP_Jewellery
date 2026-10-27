@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
+import { companyService } from "@/services/companyService";
 
 const daysRemaining = (trialEndsAt?: string | null) => {
   if (!trialEndsAt) return null;
@@ -10,6 +12,7 @@ const daysRemaining = (trialEndsAt?: string | null) => {
 
 export const SelectCompanyPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const companies = useAuthStore((state) => state.companies);
   const switchCompany = useAuthStore((state) => state.switchCompany);
 
@@ -18,9 +21,20 @@ export const SelectCompanyPage = () => {
     [companies],
   );
 
-  const selectCompany = (companyId: string) => {
-    switchCompany(companyId);
-    navigate("/");
+  const selectCompany = async (companyId: string) => {
+    try {
+      const res = await companyService.switch(companyId);
+      if (res?.accessToken) {
+        useAuthStore.setState({ token: res.accessToken, currentCompanyId: companyId });
+      } else {
+        switchCompany(companyId);
+      }
+      queryClient.clear();
+      navigate("/");
+    } catch {
+      switchCompany(companyId);
+      navigate("/");
+    }
   };
 
   return (
@@ -43,29 +57,22 @@ export const SelectCompanyPage = () => {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-medium text-charcoal">{company.name}</div>
-                  <div className="text-xs text-muted">{company.role}</div>
+                  <div className="font-semibold text-charcoal">{company.name}</div>
+                  <div className="text-xs text-muted">Role: {company.role}</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full border px-2 py-1 text-xs">{company.planName}</span>
-                  <span className="rounded-full border px-2 py-1 text-xs capitalize">{company.status}</span>
-                  {trialDays !== null ? (
-                    <span className="rounded-full border px-2 py-1 text-xs">{trialDays} days left</span>
-                  ) : null}
+                <div className="text-right text-xs">
+                  <span className="rounded bg-slate-100 px-2 py-1 font-medium capitalize text-slate-700">
+                    {company.status}
+                  </span>
+                  {trialDays !== null && (
+                    <div className="mt-1 text-muted">{trialDays} days left in trial</div>
+                  )}
                 </div>
               </div>
             </button>
           );
         })}
       </div>
-      <button
-        className="mt-6 rounded-btn bg-gold px-4 py-2 text-sm font-medium text-white hover:bg-gold/90"
-        onClick={() => navigate("/onboarding/create-company")}
-        type="button"
-      >
-        Create new company
-      </button>
     </div>
   );
 };
-

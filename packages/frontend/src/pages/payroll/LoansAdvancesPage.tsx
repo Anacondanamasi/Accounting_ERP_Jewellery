@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { DataTable } from "@/components/shared/DataTable";
@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { employeeService } from "@/services/employeeService";
+import { useAuthStore } from "@/stores/authStore";
 
 interface LoanRow {
   id: number;
@@ -33,12 +34,12 @@ type LoanInput = z.infer<typeof loansSchema>;
 
 const col = createColumnHelper<LoanRow>();
 
-const STORE_KEY = "payroll_loans_tracker_v1";
+const getStoreKey = (companyId?: string | null) => `payroll_loans_tracker_v1:${companyId || "default"}`;
 
-const readLoans = (): LoanRow[] => {
+const readLoans = (companyId?: string | null): LoanRow[] => {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
+    const raw = window.localStorage.getItem(getStoreKey(companyId));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as LoanRow[];
     return Array.isArray(parsed) ? parsed : [];
@@ -47,17 +48,22 @@ const readLoans = (): LoanRow[] => {
   }
 };
 
-const writeLoans = (rows: LoanRow[]) => {
+const writeLoans = (companyId: string | null | undefined, rows: LoanRow[]) => {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORE_KEY, JSON.stringify(rows));
+  window.localStorage.setItem(getStoreKey(companyId), JSON.stringify(rows));
 };
 
 export const LoansAdvancesPage = () => {
+  const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
   const { data: employees = [] } = useQuery({
-    queryKey: ["employees-loans"],
+    queryKey: ["employees-loans", currentCompanyId],
     queryFn: () => employeeService.list(),
   });
-  const [rows, setRows] = useState<LoanRow[]>(() => readLoans());
+  const [rows, setRows] = useState<LoanRow[]>(() => readLoans(currentCompanyId));
+
+  useEffect(() => {
+    setRows(readLoans(currentCompanyId));
+  }, [currentCompanyId]);
 
   const form = useForm<LoanInput>({
     resolver: zodResolver(loansSchema),
@@ -96,7 +102,7 @@ export const LoansAdvancesPage = () => {
       status: "OPEN",
     };
     const updated = [next, ...rows];
-    writeLoans(updated);
+    writeLoans(currentCompanyId, updated);
     setRows(updated);
     form.reset({
       employeeId: 0,
@@ -118,7 +124,7 @@ export const LoansAdvancesPage = () => {
         status: (balance === 0 ? "CLOSED" : "OPEN") as "OPEN" | "CLOSED",
       };
     });
-    writeLoans(updated);
+    writeLoans(currentCompanyId, updated);
     setRows(updated);
   };
 

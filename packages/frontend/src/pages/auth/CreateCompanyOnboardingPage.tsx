@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { companyService } from "@/services/companyService";
@@ -39,7 +39,7 @@ export const CreateCompanyOnboardingPage = () => {
       const updatedCompanies = await companyService.list();
       setAuth({
         user,
-        token,
+        token: createdCompany.accessToken ?? token,
         refreshToken: refreshToken ?? undefined,
         companies: updatedCompanies,
         currentCompanyId: createdCompany.id,

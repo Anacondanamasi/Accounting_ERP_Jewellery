@@ -1,8 +1,8 @@
 import type { Request } from "express";
 
 export const getCompanyId = (req: Request): number => {
-  const companyId = req.auth?.companyId ?? req.auth?.legacyCompanyId;
-  if (companyId === null || companyId === undefined) {
+  const companyId = req.companyContext?.company.legacyCompanyId ?? req.auth?.legacyCompanyId ?? req.auth?.companyId;
+  if (companyId === null || companyId === undefined || isNaN(Number(companyId))) {
     throw new Error("Company ID is missing from request context");
   }
   return Number(companyId);

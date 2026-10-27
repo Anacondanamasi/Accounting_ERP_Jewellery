@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Printer, X, Download } from "lucide-react";
 import { invoiceService } from "@/services/invoiceService";
+import { downloadInvoicePdf } from "@/lib/downloadPdf";
 import { GstTaxInvoicePaper } from "@/components/invoices/GstTaxInvoicePaper";
 
 export const InvoicePrintPage = () => {
@@ -50,11 +51,19 @@ export const InvoicePrintPage = () => {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => downloadInvoicePdf(Number(id), data?.invoiceNo)}
+            className="inline-flex h-8 items-center gap-1.5 rounded border border-neutral-300 bg-white hover:bg-neutral-50 px-3 text-xs font-semibold text-neutral-700 shadow-sm transition-all"
+          >
+            <Download className="h-3.5 w-3.5 text-amber-600" />
+            Direct Download PDF
+          </button>
+          <button
+            type="button"
             onClick={() => window.print()}
             className="inline-flex h-8 items-center gap-1.5 rounded bg-amber-600 hover:bg-amber-700 px-3.5 text-xs font-bold text-white shadow-sm transition-all"
           >
             <Printer className="h-3.5 w-3.5" />
-            Print / Save as PDF
+            Print
           </button>
           <button
             type="button"

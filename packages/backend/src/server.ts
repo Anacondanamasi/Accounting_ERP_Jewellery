@@ -44,6 +44,14 @@ import { writeAuditMiddleware } from "./middleware/writeAuditMiddleware";
 
 const app = express();
 
+// Support Chrome Private Network Access (PNA) for public web apps (e.g. Vercel) connecting to local backend
+app.use((req, res, next) => {
+  if (req.headers["access-control-request-private-network"]) {
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
+  }
+  next();
+});
+
 app.use(
   cors({
     origin: (origin, callback) => {

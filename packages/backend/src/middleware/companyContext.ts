@@ -5,6 +5,7 @@ import {
   getCachedPermissions,
   setCachedPermissions,
 } from "../lib/permissionCache";
+import { runWithTenantContext } from "../context/tenantContext";
 
 type MembershipRow = {
   membership_id: string;
@@ -26,14 +27,17 @@ export const requireCompanyContext = async (req: Request, res: Response, next: N
     return fail(res, 401, "UNAUTHORIZED", "Please sign in to continue.");
   }
 
+  const userId = String(req.auth.userId);
   const companyIdHeader = req.get("x-company-id");
   const companyIdQuery = typeof req.query.companyId === "string" ? req.query.companyId : null;
-  const companyId = companyIdHeader ?? companyIdQuery;
+  const tokenCompanyId = req.auth.legacyCompanyId ? String(req.auth.legacyCompanyId) : (req.auth.companyId ? String(req.auth.companyId) : null);
+  const targetCompanyId = companyIdHeader ?? companyIdQuery ?? tokenCompanyId;
 
-  if (!companyId) {
-    return fail(res, 403, "COMPANY_REQUIRED", "Please choose a company to continue.");
+  if (!targetCompanyId) {
+    return fail(res, 400, "TENANT_CONTEXT_REQUIRED", "Tenant context header (X-Company-ID) is required for tenant-scoped operations.");
   }
 
+  // Strictly verify user's active membership in the target company
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT 
       m.id AS membership_id,
@@ -49,30 +53,31 @@ export const requireCompanyContext = async (req: Request, res: Response, next: N
     INNER JOIN companies c ON c.id = m.company_id
     INNER JOIN roles r ON r.id = m.role_id
     WHERE m.user_id = $1
-      AND m.company_id = $2
+      AND (m.company_id = $2 OR CAST(c.legacy_company_id AS TEXT) = $2)
+      AND m.status = 'active'
       AND m.deleted_at IS NULL
       AND c.deleted_at IS NULL
       AND r.deleted_at IS NULL
     LIMIT 1`,
-    String(req.auth.userId),
-    companyId,
+    userId,
+    targetCompanyId,
   )) as MembershipRow[];
 
   const membership = rows[0];
   if (!membership || membership.membership_status !== "active") {
-    return fail(res, 403, "ACCESS_DENIED", "You do not have access to this company.");
+    return fail(res, 403, "ACCESS_DENIED", "You do not have access to this organisation.");
   }
 
   if (membership.company_status !== "active" && membership.company_status !== "trial" && membership.company_status !== "suspended") {
-    return fail(res, 403, "COMPANY_UNAVAILABLE", "This company is not available right now.");
+    return fail(res, 403, "COMPANY_UNAVAILABLE", "This organisation is not available right now.");
   }
 
   if (membership.company_status === "suspended" && !readOnlyMethod(req.method)) {
-    return fail(res, 403, "COMPANY_SUSPENDED", "This company is suspended. Contact support to restore write access.");
+    return fail(res, 403, "COMPANY_SUSPENDED", "This organisation is suspended. Contact support to restore write access.");
   }
 
-  const authUserId = String(req.auth.userId);
-  let permissions = getCachedPermissions(authUserId, companyId);
+  const resolvedCompanyId = membership.company_id;
+  let permissions = getCachedPermissions(userId, resolvedCompanyId);
   if (!permissions) {
     const permissionRows = (await prisma.$queryRawUnsafe(
       `SELECT p.code AS code
@@ -84,7 +89,7 @@ export const requireCompanyContext = async (req: Request, res: Response, next: N
       membership.role_id,
     )) as Array<{ code: string }>;
     permissions = permissionRows.map((row) => row.code);
-    setCachedPermissions(authUserId, companyId, permissions);
+    setCachedPermissions(userId, resolvedCompanyId, permissions);
   }
 
   req.companyContext = {
@@ -106,9 +111,25 @@ export const requireCompanyContext = async (req: Request, res: Response, next: N
     permissions,
   };
 
-  req.auth.companyId = membership.legacy_company_id ?? null;
-  req.auth.legacyCompanyId = membership.legacy_company_id ?? null;
-  req.auth.role = membership.role_name;
+  // Crucial: enforce the verified tenant on req.auth so all controllers scope strictly to this company
+  if (req.auth) {
+    req.auth.companyId = membership.legacy_company_id ?? null;
+    req.auth.legacyCompanyId = membership.legacy_company_id ?? null;
+    req.auth.role = membership.role_name;
+  }
+
+  if (membership.legacy_company_id) {
+    return runWithTenantContext(
+      {
+        companyId: membership.legacy_company_id,
+        companyUuid: membership.company_id,
+        userId,
+        role: membership.role_name,
+        permissions,
+      },
+      () => next(),
+    );
+  }
 
   return next();
 };
@@ -120,7 +141,7 @@ export const requirePermission = (code: string) => (req: Request, res: Response,
       res,
       403,
       "PERMISSION_REQUIRED",
-      `You don't have permission: ${code} in company [${req.companyContext?.company.name ?? "Unknown"}]`,
+      `You don't have permission: ${code} in organisation [${req.companyContext?.company.name ?? "Unknown"}]`,
     );
   }
   return next();

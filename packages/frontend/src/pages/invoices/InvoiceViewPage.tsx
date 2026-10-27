@@ -15,6 +15,7 @@ import {
   History,
 } from "lucide-react";
 import { invoiceService } from "@/services/invoiceService";
+import { downloadInvoicePdf } from "@/lib/downloadPdf";
 import { RecordPaymentModal } from "./RecordPaymentModal";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { LinkedSettlementsPanel } from "@/components/shared/LinkedSettlementsPanel";
@@ -82,8 +83,16 @@ export const InvoiceViewPage = () => {
     window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
   };
 
-  const handleDownloadPdf = () => {
-    window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!data?.id) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadInvoicePdf(data.id, data.invoiceNo);
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   if (isLoading || !data) {
@@ -155,11 +164,12 @@ export const InvoiceViewPage = () => {
 
           <button
             onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
             type="button"
-            className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-border bg-white px-3.5 text-xs font-semibold text-charcoal hover:bg-slate-50 transition-all"
+            className="inline-flex h-9 items-center gap-1.5 rounded-btn border border-border bg-white px-3.5 text-xs font-semibold text-charcoal hover:bg-slate-50 transition-all disabled:opacity-50"
           >
-            <Download className="h-4 w-4" />
-            Download PDF
+            <Download className={`h-4 w-4 ${downloadingPdf ? "animate-bounce" : ""}`} />
+            {downloadingPdf ? "Downloading..." : "Download PDF"}
           </button>
 
           <button

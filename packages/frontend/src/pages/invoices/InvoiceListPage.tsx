@@ -19,6 +19,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { WeightCell } from "@/components/shared/WeightCell";
 import { formatCurrency } from "@/lib/formatters";
 import { invoiceService } from "@/services/invoiceService";
+import { downloadInvoicePdf } from "@/lib/downloadPdf";
 import { format } from "date-fns";
 
 interface InvoiceRow {
@@ -53,9 +54,16 @@ export const InvoiceListPage = () => {
     overdue: 0,
   };
 
-  // Clean GST Tax Invoice Print and Save as PDF
-  const handleDownloadPdf = (id: number) => {
-    window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+  // Clean GST Tax Invoice Direct Download (PDF)
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const handleDownloadPdf = async (id: number, invoiceNo?: string) => {
+    setDownloadingId(id);
+    try {
+      await downloadInvoicePdf(id, invoiceNo);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handlePrint = (id: number) => {
@@ -213,12 +221,13 @@ export const InvoiceListPage = () => {
               <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
-                  title="Download Clean GST Tax Invoice (PDF / Print)"
-                  onClick={() => handleDownloadPdf(info.row.original.id)}
-                  className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2.5 text-2xs font-bold text-charcoal hover:bg-slate-50 shadow-sm transition-all"
+                  title="Direct Download GST Tax Invoice (PDF)"
+                  disabled={downloadingId === info.row.original.id}
+                  onClick={() => handleDownloadPdf(info.row.original.id, info.row.original.invoiceNo)}
+                  className="inline-flex h-7 items-center gap-1 rounded border border-border bg-white px-2.5 text-2xs font-bold text-charcoal hover:bg-slate-50 shadow-sm transition-all disabled:opacity-50"
                 >
-                  <Download className="h-3 w-3 text-gold" />
-                  PDF
+                  <Download className={`h-3 w-3 text-gold ${downloadingId === info.row.original.id ? "animate-bounce" : ""}`} />
+                  {downloadingId === info.row.original.id ? "..." : "PDF"}
                 </button>
                 <button
                   type="button"

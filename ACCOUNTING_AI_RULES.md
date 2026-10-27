@@ -1,4 +1,4 @@
-﻿# ACCOUNTING_AI_RULES.md
+# ACCOUNTING_AI_RULES.md
 
 ## Master Accounting, Tax, Ledger, Reconciliation, and Reporting Policy for AI Agents
 
@@ -52,6 +52,18 @@ Never:
 - Mark a report as reconciled when its required checks have failed.
 
 When a discrepancy occurs, identify its source and provide a clear diagnostic report.
+
+## 1.4 Multi-tenant isolation and fail-closed security
+
+1. **Strict Organization Isolation**: No company/organization may ever access, query, modify, reference, or infer another organization's financial records under any circumstance.
+2. **Fail-Closed Tenant Context**: If tenant context (`X-Company-ID` or verified session context) is missing, invalid, or belongs to an unauthenticated/unauthorized user, the request must fail immediately with 400 Bad Request or 403 Forbidden. Default company fallbacks (`ORDER BY created_at ASC` or defaulting to first created organization) are strictly prohibited.
+3. **Multi-layer Isolation**:
+   - Gateway verification via `requireCompanyContext` and active membership checks.
+   - Request-scoped `AsyncLocalStorage` (`TenantContext`) propagating verified tenant metadata across asynchronous operations.
+   - ORM Client query interception (`prisma.$extends`) enforcing `where.companyId` and fail-closed ID lookups (`findUnique` returns null for foreign IDs).
+   - Non-null indexed `companyId` on all tenant operational tables.
+   - Client cache purging and in-flight query abortion (`queryClient.cancelQueries()`, `queryClient.clear()`) on company switch.
+4. **Mandatory Compliance**: All code changes must conform to `docs/MULTI_TENANCY_STANDARDS.md` and pass `packages/backend/src/__tests__/crossTenantIsolation.test.ts`.
 
 ---
 

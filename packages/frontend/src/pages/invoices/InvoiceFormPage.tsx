@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { formatCurrency } from "@/lib/formatters";
 import { invoiceService } from "@/services/invoiceService";
+import { downloadInvoicePdf } from "@/lib/downloadPdf";
 import { taxService } from "@/services/taxService";
 import { JournalPreviewModal } from "@/components/accounting/JournalPreviewModal";
 import { customerService } from "@/services/customerService";
@@ -209,9 +210,16 @@ export const InvoiceFormPage = () => {
     },
   });
 
-  const handleDownloadPdf = () => {
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
     if (!id) return;
-    window.open(`/invoices/${id}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+    setDownloadingPdf(true);
+    try {
+      await downloadInvoicePdf(Number(id), existing?.invoiceNo);
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   const handlePrintPdf = () => {

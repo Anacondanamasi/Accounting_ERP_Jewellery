@@ -162,9 +162,6 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
         Number(invoice.igst) > 0 ||
         (companyStateInfo.code && customerStateInfo.code && companyStateInfo.code !== customerStateInfo.code);
 
-      // Clean single outer border (matching GstTaxInvoicePaper)
-      doc.rect(margin, margin, contentWidth, 800).lineWidth(0.75).strokeColor("#000000").stroke();
-
       // Top Header: Business Details on Left, TAX INVOICE title on Right
       doc.fontSize(12).font("Helvetica-Bold").fillColor("#000000");
       doc.text(company?.legalName || company?.name || "MEHTA JEWELLERS PRIVATE LIMITED", margin + 6, y + 6);
@@ -174,43 +171,46 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
 
       doc.fontSize(7.5).font("Helvetica").fillColor("#333333");
       const companyAddr = [
-        company?.name,
-        company?.addressLine1 || "C.G. Road, Navrangpura",
+        company?.addressLine1 || "Showroom 101-104, Jewel World",
         company?.city ? `${company.city} - 380009` : "Ahmedabad - 380009",
         `GSTIN/UIN: ${company?.gstin || "24AAACM1234A1Z1"} | PAN: ${company?.pan || "AAACM1234A"}`,
-        `State: ${companyStateInfo.code} - ${companyStateInfo.state}`,
-        `Phone: ${company?.phone || "+91 79 2658 9000"} | Email: ${company?.email || "contact@mehtajewellers.in"}`,
+        companyStateInfo.code ? `State: ${companyStateInfo.code} - ${companyStateInfo.state}` : "",
+        [company?.phone ? `Phone: ${company.phone}` : "+91 79 2658 9000", company?.email ? `Email: ${company.email}` : "contact@mehtajewellers.in"].filter(Boolean).join(" | "),
       ].filter(Boolean).join("\n");
-      doc.text(companyAddr, margin + 6, y + 20, { width: 330, lineGap: 1.5 });
 
-      y += 65;
+      const addrHeight = doc.heightOfString(companyAddr, { width: 340, lineGap: 1.5 });
+      doc.text(companyAddr, margin + 6, y + 20, { width: 340, lineGap: 1.5 });
+
+      const headerHeight = Math.max(76, 20 + addrHeight + 8);
+      y = margin + headerHeight;
       doc.moveTo(margin, y).lineTo(margin + contentWidth, y).lineWidth(0.75).strokeColor("#000000").stroke();
 
       // Invoice Details Sub-Header
-      doc.rect(margin, y, contentWidth, 38).lineWidth(0.5).strokeColor("#000000").stroke();
+      const subHeaderHeight = 42;
+      doc.rect(margin, y, contentWidth, subHeaderHeight).lineWidth(0.5).strokeColor("#000000").stroke();
       doc.fontSize(7.5).font("Helvetica-Bold").fillColor("#000000");
       
       // Col 1: Invoice No & Date
-      doc.text("INVOICE NO:", margin + 6, y + 4);
-      doc.font("Helvetica").text(invoice.invoiceNo, margin + 70, y + 4);
-      doc.font("Helvetica-Bold").text("DATED:", margin + 180, y + 4);
-      doc.font("Helvetica").text(new Date(invoice.date).toLocaleDateString("en-GB"), margin + 225, y + 4);
-      doc.font("Helvetica-Bold").text("DUE DATE:", margin + 360, y + 4);
-      doc.font("Helvetica").text(invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-GB") : "-", margin + 420, y + 4);
+      doc.text("INVOICE NO:", margin + 6, y + 5);
+      doc.font("Helvetica").text(invoice.invoiceNo, margin + 70, y + 5);
+      doc.font("Helvetica-Bold").text("DATED:", margin + 195, y + 5);
+      doc.font("Helvetica").text(new Date(invoice.date).toLocaleDateString("en-GB"), margin + 235, y + 5);
+      doc.font("Helvetica-Bold").text("DUE DATE:", margin + 370, y + 5);
+      doc.font("Helvetica").text(invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString("en-GB") : "-", margin + 425, y + 5);
 
       // Row 2: Place of Supply, Terms & Reverse Charge (Rule 46(p))
-      doc.font("Helvetica-Bold").text("PLACE OF SUPPLY:", margin + 6, y + 16);
-      doc.font("Helvetica").text(`${customerStateInfo.code} - ${customerStateInfo.state}`, margin + 95, y + 16);
-      doc.font("Helvetica-Bold").text("MODE:", margin + 260, y + 16);
-      doc.font("Helvetica").text(invoice.paymentMode || "Credit / Bank", margin + 295, y + 16);
-      doc.font("Helvetica-Bold").text("RCM APPLICABLE:", margin + 410, y + 16);
-      doc.font("Helvetica").text(invoice.isRcm || invoice.reverseCharge === "Y" ? "YES" : "NO", margin + 490, y + 16);
+      doc.font("Helvetica-Bold").text("PLACE OF SUPPLY:", margin + 6, y + 17);
+      doc.font("Helvetica").text(`${customerStateInfo.code} - ${customerStateInfo.state}`, margin + 95, y + 17);
+      doc.font("Helvetica-Bold").text("MODE:", margin + 260, y + 17);
+      doc.font("Helvetica").text(invoice.paymentMode || "Credit / Bank", margin + 295, y + 17);
+      doc.font("Helvetica-Bold").text("RCM APPLICABLE:", margin + 400, y + 17);
+      doc.font("Helvetica").text(invoice.isRcm || invoice.reverseCharge === "Y" ? "YES" : "NO", margin + 480, y + 17);
 
       // Row 3: Metal Rates
-      doc.font("Helvetica-Bold").text("METAL RATES:", margin + 6, y + 27);
-      doc.font("Helvetica").text("24K: Rs.75,200.00/g  |  22K: Rs.68,930.00/g  |  18K: Rs.56,400.00/g", margin + 75, y + 27);
+      doc.font("Helvetica-Bold").text("METAL RATES:", margin + 6, y + 29);
+      doc.font("Helvetica").text("24K: Rs.75,200.00/g  |  22K: Rs.68,930.00/g  |  18K: Rs.56,400.00/g", margin + 75, y + 29);
 
-      y += 38;
+      y += subHeaderHeight;
       doc.moveTo(margin, y).lineTo(margin + contentWidth, y).lineWidth(0.75).strokeColor("#000000").stroke();
 
       // Billed To / Shipped To
@@ -316,7 +316,7 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
       doc.moveTo(margin, y).lineTo(margin + contentWidth, y).lineWidth(0.75).strokeColor("#000000").stroke();
 
       // Bottom Section: Left side (HSN, Words, Bank, Terms) | Right side (Totals)
-      const leftColWidth = 330;
+      const leftColWidth = 345;
       const rightColWidth = contentWidth - leftColWidth;
       const bottomStartY = y;
 
@@ -349,14 +349,14 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
         y += 13;
         doc.fontSize(6.5).font("Helvetica").fillColor("#000000");
         doc.text(`HSN: ${hr.hsn}`, margin + 6, y + 2);
-        doc.text(`Taxable: Rs. ${formatINR(hr.taxable)}`, margin + 65, y + 2);
+        doc.text(`Taxable: Rs. ${formatINR(hr.taxable)}`, margin + 55, y + 2);
         if (isInterState) {
-          doc.text(`IGST (${hr.rate}%): Rs. ${formatINR(hr.tax)}`, margin + 175, y + 2);
+          doc.text(`IGST (${hr.rate}%): Rs. ${formatINR(hr.tax)}`, margin + 180, y + 2);
         } else {
           const halfRate = (hr.rate / 2).toFixed(1);
           const halfTax = hr.tax / 2;
           doc.text(`CGST (${halfRate}%): Rs. ${formatINR(halfTax)}`, margin + 155, y + 2);
-          doc.text(`SGST (${halfRate}%): Rs. ${formatINR(halfTax)}`, margin + 245, y + 2);
+          doc.text(`SGST (${halfRate}%): Rs. ${formatINR(halfTax)}`, margin + 250, y + 2);
         }
       });
 
@@ -429,6 +429,10 @@ export function generateInvoicePdf(data: InvoicePdfPayload): Promise<Buffer> {
       doc.rect(rx, ry, rightColWidth, 80).lineWidth(0.5).strokeColor("#000000").stroke();
       doc.fontSize(7).font("Helvetica-Bold").text(`For ${company?.legalName || company?.name}`, rx + 6, ry + 6, { width: rightColWidth - 12, align: "center" });
       doc.fontSize(6.5).font("Helvetica").text("Authorized Signatory", rx + 6, ry + 62, { width: rightColWidth - 12, align: "center" });
+
+      // Clean single outer border enclosing the entire invoice document
+      const docBottom = Math.max(y + 38, ry + 80);
+      doc.rect(margin, margin, contentWidth, docBottom - margin).lineWidth(0.75).strokeColor("#000000").stroke();
 
       doc.end();
     } catch (err) {

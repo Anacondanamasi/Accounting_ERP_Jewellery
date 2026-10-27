@@ -1,4 +1,4 @@
-
+﻿
 import { Bell, Search, LogOut, User, Building2, Lock, Keyboard } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -97,9 +97,15 @@ export const Header = () => {
     if (!newCompanyId || newCompanyId === currentCompanyId) return;
     try {
       queryClient.clear();
-      switchCompany(newCompanyId);
-      await companyService.switch(newCompanyId);
+      const res = await companyService.switch(newCompanyId);
+      if (res?.accessToken) {
+        useAuthStore.setState({ token: res.accessToken, currentCompanyId: newCompanyId });
+      } else {
+        switchCompany(newCompanyId);
+      }
+      queryClient.clear();
       toast.success("Switched organisation");
+      navigate("/");
     } catch (err) {
       console.error("Failed to switch organisation:", err);
     }

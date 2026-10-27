@@ -22,6 +22,7 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { formatCurrency } from "@/lib/formatters";
 import { taxService } from "@/services/taxService";
+import { useAuthStore } from "@/stores/authStore";
 import {
   MONTHS,
   QUARTERS,
@@ -79,11 +80,12 @@ export const GSTPage = () => {
   }, [financialYear, frequency, selectedMonth, selectedQuarter]);
 
   // Filing status
-  const [filingStatus, setFilingStatus] = useState(() => readFilingStatus(periodKey));
+  const currentCompanyId = useAuthStore((state) => state.currentCompanyId);
+  const [filingStatus, setFilingStatus] = useState(() => readFilingStatus(periodKey, currentCompanyId));
 
   const handleStatusChange = (update: Parameters<typeof saveFilingStatus>[1]) => {
-    saveFilingStatus(periodKey, update);
-    setFilingStatus(readFilingStatus(periodKey));
+    saveFilingStatus(periodKey, update, currentCompanyId);
+    setFilingStatus(readFilingStatus(periodKey, currentCompanyId));
     toast.success("Filing status updated");
   };
 

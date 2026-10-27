@@ -20,9 +20,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { settingsService, type NumberSeries } from "@/services/settingsService";
 import { useAuthStore } from "@/stores/authStore";
 
-export const getPrintAdvanceSettings = () => {
+export const getPrintAdvanceSettings = (companyId?: string | null) => {
   try {
-    const raw = localStorage.getItem("jewel_print_advance_settings");
+    const raw = localStorage.getItem(`jewel_print_advance_settings:${companyId || "default"}`);
     if (raw) return JSON.parse(raw);
   } catch {}
   return {
@@ -39,8 +39,8 @@ export const getPrintAdvanceSettings = () => {
   };
 };
 
-export const savePrintAdvanceSettings = (settings: ReturnType<typeof getPrintAdvanceSettings>) => {
-  localStorage.setItem("jewel_print_advance_settings", JSON.stringify(settings));
+export const savePrintAdvanceSettings = (settings: ReturnType<typeof getPrintAdvanceSettings>, companyId?: string | null) => {
+  localStorage.setItem(`jewel_print_advance_settings:${companyId || "default"}`, JSON.stringify(settings));
 };
 
 export const AdvanceConfigTab = () => {
@@ -52,7 +52,7 @@ export const AdvanceConfigTab = () => {
   const [confirmPin, setConfirmPin] = useState(lockSettings.pin);
 
   // Print & GST Advance settings
-  const [printSettings, setPrintSettings] = useState(getPrintAdvanceSettings);
+  const [printSettings, setPrintSettings] = useState(() => getPrintAdvanceSettings(currentCompanyId));
 
   // Number Series Query
   const { data: series = [], refetch: refetchSeries } = useQuery({
@@ -96,7 +96,7 @@ export const AdvanceConfigTab = () => {
 
   const handleSavePrintAndGst = (e: React.FormEvent) => {
     e.preventDefault();
-    savePrintAdvanceSettings(printSettings);
+    savePrintAdvanceSettings(printSettings, currentCompanyId);
     toast.success("Print & GST advance configurations saved");
   };
 
