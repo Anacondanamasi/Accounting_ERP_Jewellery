@@ -240,4 +240,8 @@ export const router = createBrowserRouter([
       { path: "assets/:id", element: <AssetDetailPage /> },
     ],
   },
-]);
+], {
+  future: {
+    v7_relativeSplatPath: true,
+  },
+});
